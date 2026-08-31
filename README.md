@@ -21,3 +21,4 @@ VS Codeでこのフォルダを開いて、Live Serverで `index.html` を開い
 - 幼菌/成菌/老菌ごとの複数写真
 - Supabase/Firebase等でiPhoneとPC同期
 - 同定自信度、似ているキノコ、学名
+同期テスト
