@@ -914,6 +914,18 @@ async function pullFromCloud() {
 
     records = [...recordMap.values()];
 
+    records.sort((a, b) => {
+  const aTime =
+    a.createdAt ? new Date(a.createdAt).getTime() :
+    Number(a.id) || 0;
+
+  const bTime =
+    b.createdAt ? new Date(b.createdAt).getTime() :
+    Number(b.id) || 0;
+
+  return bTime - aTime;
+});
+
     // この端末にも保存
     saveObservations();
     saveRecords();
