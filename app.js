@@ -557,13 +557,72 @@ function openDetail(id) {
     <button class="danger-btn" id="deleteOneBtn" type="button">この記録を削除</button>
   `;
 
-  document.getElementById("deleteOneBtn").addEventListener("click", () => {
-    if (!confirm("この記録を削除しますか？")) return;
-    records = records.filter(x => x.id !== id);
+ document.getElementById("deleteOneBtn").addEventListener("click", async () => {
+  if (!confirm("この記録を削除しますか？")) return;
+
+  const observationId = r.observationId
+    ? String(r.observationId)
+    : null;
+
+  try {
+    const {
+      data: { session },
+      error: sessionError
+    } = await window.supabaseClient.auth.getSession();
+
+    if (sessionError) throw sessionError;
+
+    // ログイン中ならクラウドからもキノコを削除
+    if (session?.user) {
+      const { error: recordDeleteError } =
+        await window.supabaseClient
+          .from("records")
+          .delete()
+          .eq("id", String(id));
+
+      if (recordDeleteError) throw recordDeleteError;
+    }
+
+    // この端末から削除
+    records = records.filter((x) => String(x.id) !== String(id));
     saveRecords();
+
+    // 同じ観察にキノコがもう1件も無ければ、観察データも削除
+    if (
+      observationId &&
+      !records.some(
+        (x) => String(x.observationId) === observationId
+      )
+    ) {
+      if (session?.user) {
+        const { error: observationDeleteError } =
+          await window.supabaseClient
+            .from("observations")
+            .delete()
+            .eq("id", observationId);
+
+        if (observationDeleteError) throw observationDeleteError;
+      }
+
+      observations = observations.filter(
+        (o) => String(o.id) !== observationId
+      );
+      saveObservations();
+    }
+
     detailDialog.close();
     renderAll();
-  });
+
+    if (session?.user) {
+      syncStatus.textContent = "✅ 削除をクラウドに反映しました";
+    }
+  } catch (error) {
+    console.error(error);
+    alert(
+      `削除を同期できませんでした：${error.message ?? "不明なエラー"}`
+    );
+  }
+}); 
 
   detailDialog.showModal();
 }
