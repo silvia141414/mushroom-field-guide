@@ -378,6 +378,8 @@ recordForm.addEventListener("submit", async (event) => {
   saveRecords();
   renderAll();
 
+  await syncToCloud();
+
   recordForm.reset();
   dateInput.value = todayLocal();
   pendingPhoto = "";
@@ -727,10 +729,11 @@ loginBtn.addEventListener("click", async () => {
   }
 
   loginPassword.value = "";
-  await updateAuthUI();
+await updateAuthUI();
+await pullFromCloud();
 });
 
-syncBtn.addEventListener("click", async () => {
+async function syncToCloud() {
   syncStatus.textContent = "☁️ 同期中…";
   syncBtn.disabled = true;
 
@@ -816,9 +819,10 @@ syncBtn.addEventListener("click", async () => {
   } finally {
     syncBtn.disabled = false;
   }
-});
+}
+syncBtn.addEventListener("click", syncToCloud);
 
-pullBtn.addEventListener("click", async () => {
+async function pullFromCloud() {
   syncStatus.textContent = "☁️ クラウドから読み込み中…";
   pullBtn.disabled = true;
 
@@ -928,7 +932,9 @@ pullBtn.addEventListener("click", async () => {
   } finally {
     pullBtn.disabled = false;
   }
-});
+}
+
+pullBtn.addEventListener("click", pullFromCloud);
 
 
 logoutBtn.addEventListener("click", async () => {
@@ -947,6 +953,18 @@ window.supabaseClient.auth.onAuthStateChange(() => {
   updateAuthUI();
 });
 
-updateAuthUI();
+async function infitializeApp() {
+  await updateAuthUI();
 
-renderAll();
+  const {
+    data: { session }
+  } = await window.supabaseClient.auth.getSession();
+
+  if (session?.user) {
+    await pullFromCloud();
+  } else {
+    renderAll();
+  }
+}
+
+initializeApp();
