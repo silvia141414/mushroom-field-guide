@@ -953,7 +953,7 @@ window.supabaseClient.auth.onAuthStateChange(() => {
   updateAuthUI();
 });
 
-async function infitializeApp() {
+(async () => {
   await updateAuthUI();
 
   const {
@@ -965,6 +965,4 @@ async function infitializeApp() {
   } else {
     renderAll();
   }
-}
-
-initializeApp();
+})();
