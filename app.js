@@ -952,26 +952,8 @@ async function pullFromCloud() {
     // 同じIDならクラウド側を採用
     // -------------------------
 
-    const observationMap = new Map(
-      observations.map(o => [String(o.id), o])
-    );
-
-    downloadedObservations.forEach(o => {
-      observationMap.set(String(o.id), o);
-    });
-
-    observations = [...observationMap.values()];
-
-
-    const recordMap = new Map(
-      records.map(r => [String(r.id), r])
-    );
-
-    downloadedRecords.forEach(r => {
-      recordMap.set(String(r.id), r);
-    });
-
-    records = [...recordMap.values()];
+   observations = downloadedObservations;
+records = downloadedRecords;
 
     records.sort((a, b) => {
   const aTime =
