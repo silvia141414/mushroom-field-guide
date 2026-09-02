@@ -8,6 +8,7 @@ let currentLongitude = null;
 let currentWeatherHistory = [];
 let currentWeatherFetchedAt = null;
 let pendingPhoto = "";
+let pendingPhotos = [];
 let editingRecordId = null; 
 
 const views = [...document.querySelectorAll(".view")];
@@ -231,7 +232,7 @@ document.getElementById("addMushroomBtn").addEventListener("click", () => {
   <div class="form-card extra-mushroom">
     <h2>追加キノコ 🍄</h2>
     <label class="photo-picker">
-      <input class="extra-photo" type="file" accept="image/*">
+      <input class="extra-photo" type="file" accept="image/*"multiple>
       <span>📷 写真を追加</span>
       </label>
 
@@ -272,10 +273,20 @@ document.getElementById("addMushroomBtn").addEventListener("click", () => {
 
 
 photoInput.addEventListener("change", async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
+  const files = [...(event.target.files || [])];
+  if (!files.length) return;
 
-  pendingPhoto = await compressImage(file, 1200, 0.78);
+  pendingPhotos = [];
+
+  for (const file of files) {
+    const compressedPhoto = await compressImage(file, 1200, 0.78);
+    pendingPhotos.push(compressedPhoto);
+  }
+
+  // 旧1枚用処理との互換用
+  pendingPhoto = pendingPhotos[0] || "";
+
+  // 今はひとまず1枚目をプレビュー
   photoPreview.src = pendingPhoto;
   photoPreview.hidden = false;
   photoPlaceholder.hidden = true;
@@ -346,6 +357,20 @@ async function uploadPhotoToStorage(dataUrl) {
   return data.publicUrl;
 }
 
+async function uploadPhotosToStorage(photoDataUrls) {
+  const uploadedUrls = [];
+
+  for (const photoDataUrl of photoDataUrls) {
+    const url = await uploadPhotoToStorage(photoDataUrl);
+
+    if (url) {
+      uploadedUrls.push(url);
+    }
+  }
+
+  return uploadedUrls;
+}
+
 async function deletePhotoFromStorage(photoUrl) {
   if (!photoUrl) return;
 
@@ -385,20 +410,26 @@ recordForm.addEventListener("submit", async (event) => {
 
     const oldRecord = records[recordIndex];
 
-     let storedEditedPhoto = oldRecord.photo || "";
+   const oldPhotos =
+  Array.isArray(oldRecord.photos) && oldRecord.photos.length > 0
+    ? [...oldRecord.photos]
+    : oldRecord.photo
+      ? [oldRecord.photo]
+      : [];
 
-const newPhotoFile = photoInput.files?.[0];
+let storedEditedPhotos = oldPhotos;
 
-if (newPhotoFile) {
-  storedEditedPhoto = await uploadPhotoToStorage(pendingPhoto);
+const newPhotoFiles = [...(photoInput.files || [])];
 
-  if (
-    oldRecord.photo &&
-    oldRecord.photo !== storedEditedPhoto
-  ) {
-    await deletePhotoFromStorage(oldRecord.photo);
+if (newPhotoFiles.length > 0) {
+  storedEditedPhotos = await uploadPhotosToStorage(pendingPhotos);
+
+  for (const oldPhotoUrl of new Set(oldPhotos)) {
+    await deletePhotoFromStorage(oldPhotoUrl);
   }
 }
+
+const storedEditedPhoto = storedEditedPhotos[0] || "";
 
     const updatedRecord = {
       ...oldRecord,
@@ -408,7 +439,8 @@ if (newPhotoFile) {
       date: dateInput.value || todayLocal(),
       place: document.getElementById("placeInput").value.trim(),
       memo: document.getElementById("memoInput").value.trim(),
-      photo: storedEditedPhoto
+      photo: storedEditedPhoto,
+photos: storedEditedPhotos
     };
 
 
@@ -463,6 +495,7 @@ if (linkedObservationId) {
     recordForm.reset();
     dateInput.value = todayLocal();
     pendingPhoto = "";
+    pendingPhotos = [];
     photoPreview.hidden = true;
     photoPreview.removeAttribute("src");
     photoPlaceholder.hidden = false;
@@ -500,7 +533,8 @@ if (linkedObservationId) {
 
 
   const name = document.getElementById("nameInput").value.trim() || "未同定";
-  const storedPhoto = await uploadPhotoToStorage(pendingPhoto);
+  const storedPhotos = await uploadPhotosToStorage(pendingPhotos);
+const storedPhoto = storedPhotos[0] || "";
   const record = {
     id: crypto.randomUSSSSUID ? crypto.randomUUID() : String(Date.now()),
     observationId: observationId,
@@ -511,6 +545,7 @@ if (linkedObservationId) {
     place: document.getElementById("placeInput").value.trim(),
     memo: document.getElementById("memoInput").value.trim(),
     photo: storedPhoto,
+photos: storedPhotos,
     createdAt: new Date().toISOString()
   };
 
@@ -522,15 +557,18 @@ if (linkedObservationId) {
   const mushroom = extraMushrooms[index];
 
   const photoInput = mushroom.querySelector(".extra-photo");
-  const photoFile = photoInput.files[0];
+  const photoFiles = [...(photoInput.files || [])];
+const extraPhotoDataUrls = [];
 
-  let extraPhoto = "";
-
-  if (photoFile) {
-  extraPhoto = await compressImage(photoFile, 1200, 0.78);
+for (const photoFile of photoFiles) {
+  const compressedPhoto = await compressImage(photoFile, 1200, 0.78);
+  extraPhotoDataUrls.push(compressedPhoto);
 }
 
-const storedExtraPhoto = await uploadPhotoToStorage(extraPhoto);
+const storedExtraPhotos =
+  await uploadPhotosToStorage(extraPhotoDataUrls);
+
+const storedExtraPhoto = storedExtraPhotos[0] || "";
 
 const extraRecord = {
     id: String(Date.now() + index + 1),
@@ -541,7 +579,7 @@ const extraRecord = {
     date: document.getElementById("dateInput").value, 
     place: document.getElementById("placeInput").value.trim(),
     memo: mushroom.querySelector(".extra-memo").value.trim(),
-    photo: storedExtraPhoto,
+    photo: storedExtraPhotos,
     createdAt: new Date().toISOString()
   };
 
@@ -556,6 +594,7 @@ const extraRecord = {
   recordForm.reset();
   dateInput.value = todayLocal();
   pendingPhoto = "";
+  pendingPhotos = [];
   photoPreview.hidden = true;
   photoPreview.removeAttribute("src");
   photoPlaceholder.hidden = false;
@@ -712,9 +751,23 @@ function openDetail(id) {
       <h3>🌦 発見前14日間の天気</h3>
       <p>天気データなし</p>
     `;
+    
+    const detailPhotos =
+  Array.isArray(r.photos) && r.photos.length > 0
+    ? r.photos
+    : r.photo
+      ? [r.photo]
+      : [];
+
+const photosHtml = detailPhotos
+  .map(
+    (photoUrl, index) =>
+      `<img class="detail-photo" src="${photoUrl}" alt="${escapeHTML(r.name)} 写真${index + 1}">`
+  )
+  .join("");
 
   detailContent.innerHTML = `
-    ${r.photo ? `<img class="detail-photo" src="${r.photo}" alt="${escapeHTML(r.name)}">` : ""}
+    ${photosHtml}
     <h2 style="margin-top:14px">${escapeHTML(r.name)}</h2>
     <dl class="detail-grid">
       <dt>発見日</dt><dd>${escapeHTML(r.date)}</dd>
@@ -754,17 +807,24 @@ if (editingObservation) {
   document.getElementById("placeInput").value = r.place || "";
   document.getElementById("memoInput").value = r.memo || "";
 
-  pendingPhoto = r.photo || "";
+  pendingPhotos =
+  Array.isArray(r.photos) && r.photos.length > 0
+    ? [...r.photos]
+    : r.photo
+      ? [r.photo]
+      : [];
 
-  if (pendingPhoto) {
-    photoPreview.src = pendingPhoto;
-    photoPreview.hidden = false;
-    photoPlaceholder.hidden = true;
-  } else {
-    photoPreview.hidden = true;
-    photoPreview.removeAttribute("src");
-    photoPlaceholder.hidden = false;
-  }
+pendingPhoto = pendingPhotos[0] || "";
+
+if (pendingPhoto) {
+  photoPreview.src = pendingPhoto;
+  photoPreview.hidden = false;
+  photoPlaceholder.hidden = true;
+} else {
+  photoPreview.hidden = true;
+  photoPreview.removeAttribute("src");
+  photoPlaceholder.hidden = false;
+}
 
   detailDialog.close();
   switchView("addView");
@@ -772,7 +832,16 @@ if (editingObservation) {
 
  document.getElementById("deleteOneBtn").addEventListener("click", async () => {
   if (!confirm("この記録を削除しますか？")) return;
-  await deletePhotoFromStorage(r.photo);
+  const photosToDelete =
+  Array.isArray(r.photos) && r.photos.length > 0
+    ? r.photos
+    : r.photo
+      ? [r.photo]
+      : [];
+
+for (const photoUrl of new Set(photosToDelete)) {
+  await deletePhotoFromStorage(photoUrl);
+}
 
   const observationId = r.observationId
     ? String(r.observationId)
@@ -1067,7 +1136,8 @@ async function syncToCloud() {
       date: r.date || null,
       place: r.place || "",
       memo: r.memo || "",
-      photo: r.photo || ""
+photo: r.photo || "",
+photos: Array.isArray(r.photos) ? r.photos : []
     }));
 
     if (cloudRecords.length > 0) {
@@ -1158,7 +1228,8 @@ async function pullFromCloud() {
       place: r.place || "",
       memo: r.memo || "",
       photo: r.photo || "",
-      createdAt: r.created_at
+photos: Array.isArray(r.photos) ? r.photos : [],
+createdAt: r.created_at
     }));
 
     // -------------------------
