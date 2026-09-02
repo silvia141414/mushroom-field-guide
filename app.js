@@ -307,6 +307,69 @@ function compressImage(file, maxSize, quality) {
   });
 }
 
+async function uploadPhotoToStorage(dataUrl) {
+  if (!dataUrl) return "";
+
+  // すでにStorageのURLならそのまま使う
+  if (dataUrl.startsWith("http://") || dataUrl.startsWith("https://")) {
+    return dataUrl;
+  }
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await window.supabaseClient.auth.getSession();
+
+  if (sessionError) throw sessionError;
+  if (!session?.user) {
+    throw new Error("写真を保存するにはログインが必要です");
+  }
+
+  const blob = await fetch(dataUrl).then((response) => response.blob());
+
+  const fileName = `${crypto.randomUUID()}.jpg`;
+  const filePath = `${session.user.id}/${fileName}`;
+
+  const { error: uploadError } = await window.supabaseClient.storage
+    .from("mushroom-photos")
+    .upload(filePath, blob, {
+      contentType: "image/jpeg",
+      upsert: false
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { data } = window.supabaseClient.storage
+    .from("mushroom-photos")
+    .getPublicUrl(filePath);
+
+  return data.publicUrl;
+}
+
+async function deletePhotoFromStorage(photoUrl) {
+  if (!photoUrl) return;
+
+  const marker = "/storage/v1/object/public/mushroom-photos/";
+
+  // Storageの写真URLじゃなければ何もしない
+  if (!photoUrl.includes(marker)) return;
+
+  const encodedPath = photoUrl.split(marker)[1];
+  if (!encodedPath) return;
+
+  const filePath = decodeURIComponent(
+    encodedPath.split("?")[0]
+  );
+
+  const { error } = await window.supabaseClient.storage
+    .from("mushroom-photos")
+    .remove([filePath]);
+
+  if (error) {
+    console.warn("Storageの写真を削除できませんでした", error);
+  }
+}
+
 recordForm.addEventListener("submit", async (event) => {
   event.preventDefault();
     if (editingRecordId !== null) {
@@ -322,6 +385,21 @@ recordForm.addEventListener("submit", async (event) => {
 
     const oldRecord = records[recordIndex];
 
+     let storedEditedPhoto = oldRecord.photo || "";
+
+const newPhotoFile = photoInput.files?.[0];
+
+if (newPhotoFile) {
+  storedEditedPhoto = await uploadPhotoToStorage(pendingPhoto);
+
+  if (
+    oldRecord.photo &&
+    oldRecord.photo !== storedEditedPhoto
+  ) {
+    await deletePhotoFromStorage(oldRecord.photo);
+  }
+}
+
     const updatedRecord = {
       ...oldRecord,
       name: document.getElementById("nameInput").value.trim() || "未同定",
@@ -330,8 +408,9 @@ recordForm.addEventListener("submit", async (event) => {
       date: dateInput.value || todayLocal(),
       place: document.getElementById("placeInput").value.trim(),
       memo: document.getElementById("memoInput").value.trim(),
-      photo: pendingPhoto || ""
+      photo: storedEditedPhoto
     };
+
 
     records[recordIndex] = updatedRecord;
 
@@ -421,6 +500,7 @@ if (linkedObservationId) {
 
 
   const name = document.getElementById("nameInput").value.trim() || "未同定";
+  const storedPhoto = await uploadPhotoToStorage(pendingPhoto);
   const record = {
     id: crypto.randomUSSSSUID ? crypto.randomUUID() : String(Date.now()),
     observationId: observationId,
@@ -430,7 +510,7 @@ if (linkedObservationId) {
     date: dateInput.value || todayLocal(),
     place: document.getElementById("placeInput").value.trim(),
     memo: document.getElementById("memoInput").value.trim(),
-    photo: pendingPhoto,
+    photo: storedPhoto,
     createdAt: new Date().toISOString()
   };
 
@@ -447,10 +527,12 @@ if (linkedObservationId) {
   let extraPhoto = "";
 
   if (photoFile) {
-    extraPhoto = await compressImage(photoFile, 1200, 0.78);
-  }
+  extraPhoto = await compressImage(photoFile, 1200, 0.78);
+}
 
-  const extraRecord = {
+const storedExtraPhoto = await uploadPhotoToStorage(extraPhoto);
+
+const extraRecord = {
     id: String(Date.now() + index + 1),
     observationId: observationId,
     name: mushroom.querySelector(".extra-name").value.trim() || "未同定",
@@ -459,7 +541,7 @@ if (linkedObservationId) {
     date: document.getElementById("dateInput").value, 
     place: document.getElementById("placeInput").value.trim(),
     memo: mushroom.querySelector(".extra-memo").value.trim(),
-    photo: extraPhoto,
+    photo: storedExtraPhoto,
     createdAt: new Date().toISOString()
   };
 
@@ -690,6 +772,7 @@ if (editingObservation) {
 
  document.getElementById("deleteOneBtn").addEventListener("click", async () => {
   if (!confirm("この記録を削除しますか？")) return;
+  await deletePhotoFromStorage(r.photo);
 
   const observationId = r.observationId
     ? String(r.observationId)
