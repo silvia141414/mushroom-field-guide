@@ -759,13 +759,58 @@ function openDetail(id) {
       ? [r.photo]
       : [];
 
-const photosHtml = detailPhotos
-  .map(
-    (photoUrl, index) =>
-      `<img class="detail-photo" src="${photoUrl}" alt="${escapeHTML(r.name)} 写真${index + 1}">`
-  )
-  .join("");
+const photosHtml =
+  detailPhotos.length > 0
+    ? `
+      <div class="photo-gallery-wrap">
 
+        <div class="photo-gallery">
+          ${detailPhotos
+            .map(
+              (photoUrl, index) => `
+                <div class="photo-slide">
+                  <img
+                    class="detail-photo"
+                    src="${photoUrl}"
+                    alt="${escapeHTML(r.name)} 写真${index + 1}"
+                  >
+                  ${
+                    detailPhotos.length > 1
+                      ? `<span class="photo-count">${index + 1} / ${detailPhotos.length}</span>`
+                      : ""
+                  }
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+
+        ${
+          detailPhotos.length > 1
+            ? `
+              <div class="photo-dots">
+                ${detailPhotos
+                  .map(
+                    (_, index) => `
+                      <button
+                        class="photo-dot${index === 0 ? " active" : ""}"
+                        type="button"
+                        data-photo-index="${index}"
+                        aria-label="写真${index + 1}"
+                      ></button>
+                    `
+                  )
+                  .join("")}
+              </div>
+            `
+            : ""
+        }
+
+      </div>
+    `
+    : "";
+  
+  
   detailContent.innerHTML = `
     ${photosHtml}
     <h2 style="margin-top:14px">${escapeHTML(r.name)}</h2>
@@ -783,6 +828,51 @@ const photosHtml = detailPhotos
   <button class="secondary-btn" id="editOneBtn" type="button">✏️ この記録を編集</button>
     <button class="danger-btn" id="deleteOneBtn" type="button">この記録を削除</button>
   `;
+
+  const photoGallery = detailContent.querySelector(".photo-gallery");
+const photoDots = [...detailContent.querySelectorAll(".photo-dot")];
+const photoSlides = [...detailContent.querySelectorAll(".photo-slide")];
+
+if (photoGallery && photoDots.length > 0 && photoSlides.length > 0) {
+  const updateActiveDot = () => {
+    const galleryLeft = photoGallery.getBoundingClientRect().left;
+
+    let activeIndex = 0;
+    let nearestDistance = Infinity;
+
+    photoSlides.forEach((slide, index) => {
+      const distance = Math.abs(
+        slide.getBoundingClientRect().left - galleryLeft
+      );
+
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        activeIndex = index;
+      }
+    });
+
+    photoDots.forEach((dot, index) => {
+      dot.classList.toggle("active", index === activeIndex);
+    });
+  };
+
+  photoGallery.addEventListener("scroll", updateActiveDot, {
+    passive: true
+  });
+
+  photoDots.forEach((dot, index) => {
+    dot.addEventListener("click", () => {
+      const targetLeft =
+        photoSlides[index].offsetLeft -
+        photoSlides[0].offsetLeft;
+
+      photoGallery.scrollTo({
+        left: targetLeft,
+        behavior: "smooth"
+      });
+    });
+  });
+}
 
   document.getElementById("editOneBtn").addEventListener("click", () => {
   editingRecordId = String(r.id);
