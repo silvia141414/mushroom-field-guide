@@ -8,6 +8,7 @@ let currentLongitude = null;
 let currentWeatherHistory = [];
 let currentWeatherFetchedAt = null;
 let pendingPhoto = "";
+let editingRecordId = null; 
 
 const views = [...document.querySelectorAll(".view")];
 const navButtons = [...document.querySelectorAll(".nav-btn")];
@@ -21,6 +22,7 @@ const libraryCount = document.getElementById("libraryCount");
 const searchInput = document.getElementById("searchInput");
 const filterInput = document.getElementById("filterInput");
 const recordForm = document.getElementById("recordForm");
+const saveRecordBtn = document.getElementById("saveRecordBtn");
 const photoInput = document.getElementById("photoInput");
 const photoPreview = document.getElementById("photoPreview");
 const photoPlaceholder = document.getElementById("photoPlaceholder");
@@ -307,6 +309,95 @@ function compressImage(file, maxSize, quality) {
 
 recordForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+    if (editingRecordId !== null) {
+    const recordIndex = records.findIndex(
+      (r) => String(r.id) === String(editingRecordId)
+    );
+
+    if (recordIndex === -1) {
+      alert("編集する記録が見つかりませんでした");
+      editingRecordId = null;
+      return;
+    }
+
+    const oldRecord = records[recordIndex];
+
+    const updatedRecord = {
+      ...oldRecord,
+      name: document.getElementById("nameInput").value.trim() || "未同定",
+      stage: document.getElementById("stageInput").value,
+      category: document.getElementById("categoryInput").value,
+      date: dateInput.value || todayLocal(),
+      place: document.getElementById("placeInput").value.trim(),
+      memo: document.getElementById("memoInput").value.trim(),
+      photo: pendingPhoto || ""
+    };
+
+    records[recordIndex] = updatedRecord;
+
+    const linkedObservationId = oldRecord.observationId
+  ? String(oldRecord.observationId)
+  : null;
+
+if (linkedObservationId) {
+  const observationIndex = observations.findIndex(
+    (o) => String(o.id) === linkedObservationId
+  );
+
+  if (observationIndex !== -1) {
+    observations[observationIndex] = {
+      ...observations[observationIndex],
+      date: updatedRecord.date,
+      place: updatedRecord.place,
+      latitude: currentLatitude,
+      longitude: currentLongitude,
+      weather: {
+        ...(observations[observationIndex].weather ?? {}),
+        fetchedAt: currentWeatherFetchedAt,
+        history14: currentWeatherHistory
+      }
+    };
+
+    saveObservations();
+  }
+
+  // 同じ観察で追加した他のキノコも、日付と場所を揃える
+  records = records.map((item) =>
+    String(item.observationId) === linkedObservationId
+      ? {
+          ...item,
+          date: updatedRecord.date,
+          place: updatedRecord.place
+        }
+      : item
+  );
+}
+
+    saveRecords();
+    renderAll();
+
+    await syncToCloud();
+
+    editingRecordId = null;
+    saveRecordBtn.textContent = "この発見を保存";
+
+    recordForm.reset();
+    dateInput.value = todayLocal();
+    pendingPhoto = "";
+    photoPreview.hidden = true;
+    photoPreview.removeAttribute("src");
+    photoPlaceholder.hidden = false;
+
+    saveMessage.textContent = `「${updatedRecord.name}」を更新しました ✏️`;
+
+    setTimeout(() => {
+      saveMessage.textContent = "";
+      switchView("libraryView");
+    }, 700);
+
+    return;
+  }
+
   const observationId = "obs-" + Date.now();
 
   const observation = {
@@ -554,8 +645,48 @@ function openDetail(id) {
      
       ${locationHtml}
   ${weatherHtml}
+  <button class="secondary-btn" id="editOneBtn" type="button">✏️ この記録を編集</button>
     <button class="danger-btn" id="deleteOneBtn" type="button">この記録を削除</button>
   `;
+
+  document.getElementById("editOneBtn").addEventListener("click", () => {
+  editingRecordId = String(r.id);
+  saveRecordBtn.textContent = "✏️ 変更を保存";
+  const editingObservation = observations.find(
+  (o) => String(o.id) === String(r.observationId)
+);
+
+if (editingObservation) {
+  currentLatitude = editingObservation.latitude ?? null;
+  currentLongitude = editingObservation.longitude ?? null;
+  currentWeatherHistory =
+    editingObservation.weather?.history14 ?? [];
+  currentWeatherFetchedAt =
+    editingObservation.weather?.fetchedAt ?? null;
+}
+
+  document.getElementById("nameInput").value = r.name || "";
+  document.getElementById("stageInput").value = r.stage || "不明";
+  document.getElementById("categoryInput").value = r.category || "不明";
+  document.getElementById("dateInput").value = r.date || todayLocal();
+  document.getElementById("placeInput").value = r.place || "";
+  document.getElementById("memoInput").value = r.memo || "";
+
+  pendingPhoto = r.photo || "";
+
+  if (pendingPhoto) {
+    photoPreview.src = pendingPhoto;
+    photoPreview.hidden = false;
+    photoPlaceholder.hidden = true;
+  } else {
+    photoPreview.hidden = true;
+    photoPreview.removeAttribute("src");
+    photoPlaceholder.hidden = false;
+  }
+
+  detailDialog.close();
+  switchView("addView");
+});
 
  document.getElementById("deleteOneBtn").addEventListener("click", async () => {
   if (!confirm("この記録を削除しますか？")) return;
