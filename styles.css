@@ -434,3 +434,65 @@ dialog::backdrop { background:rgba(0,0,0,.45); }
 .map-link:hover {
   background: #eef2eb;
 }
+
+.photo-gallery {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  gap: 12px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.photo-gallery::-webkit-scrollbar {
+  display: none;
+}
+
+.photo-slide {
+  position: relative;
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+}
+
+.photo-slide .detail-photo {
+  width: 100%;
+  display: block;
+  margin: 0;
+  border-radius: 16px;
+}
+
+.photo-count {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.photo-dots {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.photo-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.photo-dot.active {
+  width: 10px;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.75);
+}
