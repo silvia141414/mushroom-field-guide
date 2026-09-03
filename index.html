@@ -43,6 +43,72 @@
           </div>
         </div>
 
+        <div class="mushroom-chance-card">
+  <div class="mushroom-chance-header">
+    <div>
+      <span class="chance-kicker">WEATHER × MUSHROOM</span>
+      <h2>🍄 キノコチャンス</h2>
+    </div>
+  </div>
+
+  <label class="chance-location-label">
+    調べる場所
+    <select id="chanceLocationSelect">
+      <option value="">登録した場所を選択</option>
+    </select>
+  </label>
+
+  <button
+    id="checkMushroomChanceBtn"
+    class="primary-btn"
+    type="button"
+  >
+    🌧️ 直近14日の条件を調べる
+  </button>
+
+  <div id="mushroomChanceResult" class="chance-result" hidden>
+    <div id="chanceLevel" class="chance-level">
+      🍄 条件を解析中...
+    </div>
+
+    <p id="chanceMessage" class="chance-message"></p>
+
+    <div class="chance-weather-grid">
+      <div>
+        <span>14日間の雨量</span>
+        <strong id="chanceRainTotal">--</strong>
+      </div>
+
+      <div>
+        <span>雨の日</span>
+        <strong id="chanceRainDays">--</strong>
+      </div>
+
+      <div>
+        <span>平均気温</span>
+        <strong id="chanceAverageTemp">--</strong>
+      </div>
+
+      <div>
+        <span>最近の気温</span>
+        <strong id="chanceRecentTemp">--</strong>
+      </div>
+    </div>
+  </div>
+  <div class="mushroom-prediction">
+  <div class="prediction-header">
+    <h3>🍄 今、怪しいキノコ</h3>
+    <span>過去の発見条件と比較</span>
+  </div>
+
+  <div id="mushroomPredictionList">
+    <p class="prediction-empty">
+      場所を選んで条件を調べると、ここに候補が表示されます。
+    </p>
+  </div>
+</div>
+</div>
+
         <div class="section-title-row">
           <h2>最近の発見</h2>
           <button class="text-btn" id="goLibraryBtn" type="button">全部見る</button>
