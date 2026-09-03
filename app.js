@@ -527,154 +527,220 @@ photoInput.addEventListener("change", async (event) => {
   const files = [...(event.target.files || [])];
   if (!files.length) return;
 
-  // 新規登録のときだけ、1枚目の写真から撮影日時・GPSを自動取得
-if (editingRecordId === null && window.exifr) {
   const firstFile = files[0];
 
-  try {
-    // 撮影日時を取得
-    const exifData = await window.exifr.parse(firstFile, [
-      "DateTimeOriginal",
-      "CreateDate"
-    ]);
+  // ==================================================
+  // まず即座に1枚目を表示
+  // ==================================================
+  const quickPreviewUrl = URL.createObjectURL(firstFile);
 
-    const photoDate =
-      exifData?.DateTimeOriginal ||
-      exifData?.CreateDate;
+  photoPreview.src = quickPreviewUrl;
+  photoPreview.hidden = false;
+  photoPlaceholder.hidden = true;
 
-    if (photoDate instanceof Date && !Number.isNaN(photoDate.getTime())) {
-      const year = photoDate.getFullYear();
-      const month = String(photoDate.getMonth() + 1).padStart(2, "0");
-      const day = String(photoDate.getDate()).padStart(2, "0");
+  photoPreview.onload = () => {
+    URL.revokeObjectURL(quickPreviewUrl);
+    photoPreview.onload = null;
+  };
 
-      dateInput.value = `${year}-${month}-${day}`;
-    }
+  // いったんブラウザに描画させる
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(resolve);
+    });
+  });
 
-    // GPSを取得
-    const gps = await window.exifr.gps(firstFile);
+  // ==================================================
+  // EXIF取得は写真圧縮と並行して進める
+  // ==================================================
+  let metadataPromise = Promise.resolve();
 
-    if (
-      gps &&
-      Number.isFinite(gps.latitude) &&
-      Number.isFinite(gps.longitude)
-    ) {
-      currentLocationId = null;
-      currentLatitude = gps.latitude;
-      currentLongitude = gps.longitude;
+  if (editingRecordId === null && window.exifr) {
+    metadataPromise = (async () => {
+      try {
+        // 撮影日時を取得
+        const exifData = await window.exifr.parse(firstFile, [
+          "DateTimeOriginal",
+          "CreateDate"
+        ]);
 
-      document.getElementById("savedLocationSelect").value = "";
+        const photoDate =
+          exifData?.DateTimeOriginal ||
+          exifData?.CreateDate;
 
-      document.getElementById("locationStatus").textContent =
-        `📷 写真の撮影位置を取得しました：緯度 ${currentLatitude.toFixed(6)} / 経度 ${currentLongitude.toFixed(6)}`;
+        if (
+          photoDate instanceof Date &&
+          !Number.isNaN(photoDate.getTime())
+        ) {
+          const year = photoDate.getFullYear();
+          const month = String(
+            photoDate.getMonth() + 1
+          ).padStart(2, "0");
+          const day = String(
+            photoDate.getDate()
+          ).padStart(2, "0");
 
-      mapCoordinates.textContent =
-        `緯度 ${currentLatitude.toFixed(6)} / 経度 ${currentLongitude.toFixed(6)}`;
+          dateInput.value =
+            `${year}-${month}-${day}`;
+        }
 
-        // 緯度経度から場所名を自動取得
-try {
-  const reverseResponse = await fetch(
-    "https://nominatim.openstreetmap.org/reverse" +
-      `?format=jsonv2` +
-      `&lat=${encodeURIComponent(currentLatitude)}` +
-      `&lon=${encodeURIComponent(currentLongitude)}` +
-      `&zoom=18` +
-      `&addressdetails=1` +
-      `&accept-language=ja`
-  );
+        // GPSを取得
+        const gps = await window.exifr.gps(firstFile);
 
-  if (!reverseResponse.ok) {
-    throw new Error(`場所名取得エラー ${reverseResponse.status}`);
-  }
+        if (
+          gps &&
+          Number.isFinite(gps.latitude) &&
+          Number.isFinite(gps.longitude)
+        ) {
+          currentLocationId = null;
+          currentLatitude = gps.latitude;
+          currentLongitude = gps.longitude;
 
-  const placeData = await reverseResponse.json();
-  const address = placeData.address || {};
+          document.getElementById(
+            "savedLocationSelect"
+          ).value = "";
 
-  const specificName =
-    placeData.name ||
-    address.neighbourhood ||
-    address.suburb ||
-    "";
+          document.getElementById(
+            "locationStatus"
+          ).textContent =
+            `📷 写真の撮影位置を取得しました：緯度 ${currentLatitude.toFixed(6)} / 経度 ${currentLongitude.toFixed(6)}`;
 
-  const municipality =
-    address.city ||
-    address.town ||
-    address.village ||
-    address.municipality ||
-    address.county ||
-    "";
+          mapCoordinates.textContent =
+            `緯度 ${currentLatitude.toFixed(6)} / 経度 ${currentLongitude.toFixed(6)}`;
 
-  const state = address.state || "";
+          // 緯度経度から場所名を自動取得
+          try {
+            const reverseResponse = await fetch(
+              "https://nominatim.openstreetmap.org/reverse" +
+                `?format=jsonv2` +
+                `&lat=${encodeURIComponent(currentLatitude)}` +
+                `&lon=${encodeURIComponent(currentLongitude)}` +
+                `&zoom=18` +
+                `&addressdetails=1` +
+                `&accept-language=ja`
+            );
 
-  const locationParts = [
-    specificName,
-    municipality,
-    state
-  ].filter(
-    (part, index, array) =>
-      part && array.indexOf(part) === index
-  );
+            if (!reverseResponse.ok) {
+              throw new Error(
+                `場所名取得エラー ${reverseResponse.status}`
+              );
+            }
 
-  const autoPlaceName =
-    locationParts.join("・") ||
-    placeData.display_name ||
-    "";
+            const placeData =
+              await reverseResponse.json();
 
-  if (autoPlaceName) {
-    document.getElementById("placeInput").value =
-      autoPlaceName;
+            const address =
+              placeData.address || {};
 
-    document.getElementById("locationStatus").textContent =
-      `📷 写真から撮影位置と場所名「${autoPlaceName}」を取得しました`;
-  }
-} catch (geocodeError) {
-  console.warn(
-    "緯度経度から場所名を取得できませんでした",
-    geocodeError
-  );
-}
+            const specificName =
+              placeData.name ||
+              address.neighbourhood ||
+              address.suburb ||
+              "";
 
-      if (locationMap) {
-        locationMap.setView(
-          [currentLatitude, currentLongitude],
-          15
+            const municipality =
+              address.city ||
+              address.town ||
+              address.village ||
+              address.municipality ||
+              address.county ||
+              "";
+
+            const state =
+              address.state || "";
+
+            const locationParts = [
+              specificName,
+              municipality,
+              state
+            ].filter(
+              (part, index, array) =>
+                part &&
+                array.indexOf(part) === index
+            );
+
+            const autoPlaceName =
+              locationParts.join("・") ||
+              placeData.display_name ||
+              "";
+
+            if (autoPlaceName) {
+              document.getElementById(
+                "placeInput"
+              ).value = autoPlaceName;
+
+              document.getElementById(
+                "locationStatus"
+              ).textContent =
+                `📷 写真から撮影位置と場所名「${autoPlaceName}」を取得しました`;
+            }
+          } catch (geocodeError) {
+            console.warn(
+              "緯度経度から場所名を取得できませんでした",
+              geocodeError
+            );
+          }
+
+          // 地図が開いていればピンを移動
+          if (locationMap) {
+            locationMap.setView(
+              [
+                currentLatitude,
+                currentLongitude
+              ],
+              15
+            );
+
+            if (locationMarker) {
+              locationMarker.setLatLng([
+                currentLatitude,
+                currentLongitude
+              ]);
+            } else {
+              locationMarker = L.marker([
+                currentLatitude,
+                currentLongitude
+              ]).addTo(locationMap);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(
+          "写真の撮影情報を取得できませんでした",
+          error
         );
 
-        if (locationMarker) {
-          locationMarker.setLatLng([
-            currentLatitude,
-            currentLongitude
-          ]);
-        } else {
-          locationMarker = L.marker([
-            currentLatitude,
-            currentLongitude
-          ]).addTo(locationMap);
-        }
+        document.getElementById(
+          "locationStatus"
+        ).textContent =
+          `⚠️ 写真情報の読取エラー：${error.message || error}`;
       }
-    }
-  } catch (error) {
-  console.error("写真の撮影情報を取得できませんでした", error);
+    })();
+  }
 
-  document.getElementById("locationStatus").textContent =
-    `⚠️ 写真情報の読取エラー：${error.message || error}`;
-}
-
-}
-
+  // ==================================================
+  // 写真圧縮
+  // ==================================================
   pendingPhotos = [];
 
   for (const file of files) {
-    const compressedPhoto = await compressImage(file, 1200, 0.78);
+    const compressedPhoto =
+      await compressImage(file, 1200, 0.78);
+
     pendingPhotos.push(compressedPhoto);
   }
 
-  // 旧1枚用処理との互換用
-  pendingPhoto = pendingPhotos[0] || "";
+  // 旧1枚用処理との互換
+  pendingPhoto =
+    pendingPhotos[0] || "";
 
-  // 今はひとまず1枚目をプレビュー
+  // 圧縮版に差し替え
   photoPreview.src = pendingPhoto;
   photoPreview.hidden = false;
   photoPlaceholder.hidden = true;
+
+  // EXIF・場所取得がまだ終わっていたら待つ
+  await metadataPromise;
 });
 
 function compressImage(file, maxSize, quality) {
