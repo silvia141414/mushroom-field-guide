@@ -589,8 +589,12 @@ if (editingRecordId === null && window.exifr) {
       }
     }
   } catch (error) {
-    console.warn("写真の撮影情報を取得できませんでした", error);
-  }
+  console.error("写真の撮影情報を取得できませんでした", error);
+
+  document.getElementById("locationStatus").textContent =
+    `⚠️ 写真情報の読取エラー：${error.message || error}`;
+}
+
 }
 
   pendingPhotos = [];
