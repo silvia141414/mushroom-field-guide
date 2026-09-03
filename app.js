@@ -284,6 +284,9 @@ async function loadSavedLocations() {
   const savedLocationSelect =
     document.getElementById("savedLocationSelect");
 
+    const chanceLocationSelect =
+  document.getElementById("chanceLocationSelect");
+
   const {
     data: { session },
     error: sessionError
@@ -307,6 +310,11 @@ async function loadSavedLocations() {
   savedLocationSelect.innerHTML =
     `<option value="">選択しない</option>`;
 
+    if (chanceLocationSelect) {
+  chanceLocationSelect.innerHTML =
+    `<option value="">登録した場所を選択</option>`;
+}
+
   locations.forEach((location) => {
     const option = document.createElement("option");
 
@@ -316,6 +324,16 @@ async function loadSavedLocations() {
     option.dataset.longitude = location.longitude;
 
     savedLocationSelect.appendChild(option);
+
+    if (chanceLocationSelect) {
+  const chanceOption =
+    document.createElement("option");
+
+  chanceOption.value = location.id;
+  chanceOption.textContent = location.name;
+
+  chanceLocationSelect.appendChild(chanceOption);
+}
   });
 }
 
@@ -381,7 +399,7 @@ document.getElementById("getWeatherBtn").addEventListener("click", async (event)
 const status = document.getElementById("weatherStatus");
 const historyArea = document.getElementById("weatherHistory");
 
-if (currentLatitude === null || currentLatitude === null){
+if (currentLatitude === null || currentLongitude === null) {
   status.textContent = "先に現在地を取得してください"
   return;
 }
@@ -475,6 +493,330 @@ const url =
     status.textContent = "天気データを取得できませんでした";
   }
 });
+
+// ==================================================
+// ホーム：キノコチャンス
+// ==================================================
+document
+  .getElementById("checkMushroomChanceBtn")
+  .addEventListener("click", async () => {
+    const chanceLocationSelect =
+      document.getElementById("chanceLocationSelect");
+
+    const result =
+      document.getElementById("mushroomChanceResult");
+
+    const chanceLevel =
+      document.getElementById("chanceLevel");
+
+    const chanceMessage =
+      document.getElementById("chanceMessage");
+
+    const locationId = chanceLocationSelect.value;
+
+    if (!locationId) {
+      alert("先に調べる場所を選んでください");
+      return;
+    }
+
+    const location = savedLocations.find(
+      (item) => String(item.id) === String(locationId)
+    );
+
+    if (!location) {
+      alert("場所の情報を取得できませんでした");
+      return;
+    }
+
+    result.hidden = false;
+
+    chanceLevel.textContent =
+      "🍄 条件を解析中...";
+
+    chanceMessage.textContent =
+      `${location.name} の直近14日間を調べています`;
+
+    try {
+      const url =
+        "https://api.open-meteo.com/v1/forecast" +
+        `?latitude=${encodeURIComponent(location.latitude)}` +
+        `&longitude=${encodeURIComponent(location.longitude)}` +
+        `&past_days=13` +
+        `&forecast_days=1` +
+        `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum` +
+        `&timezone=Asia%2FTokyo`;
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(
+          `天気APIエラー ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+
+      const dates =
+        data.daily?.time || [];
+
+      const maxTemps =
+        data.daily?.temperature_2m_max || [];
+
+      const minTemps =
+        data.daily?.temperature_2m_min || [];
+
+      const rain =
+        data.daily?.precipitation_sum || [];
+
+      const weatherDays = dates.map((date, index) => {
+        const max = Number(maxTemps[index]);
+        const min = Number(minTemps[index]);
+        const precipitation =
+          Number(rain[index]) || 0;
+
+        const averageTemp =
+          Number.isFinite(max) &&
+          Number.isFinite(min)
+            ? (max + min) / 2
+            : null;
+
+        return {
+          date,
+          precipitation,
+          averageTemp
+        };
+      });
+
+      const rainTotal = weatherDays.reduce(
+        (sum, day) =>
+          sum + day.precipitation,
+        0
+      );
+
+      const rainDays = weatherDays.filter(
+        (day) => day.precipitation >= 0.5
+      ).length;
+
+      const validTemps = weatherDays
+        .map((day) => day.averageTemp)
+        .filter(Number.isFinite);
+
+      const averageTemp =
+        validTemps.length > 0
+          ? validTemps.reduce(
+              (sum, temp) => sum + temp,
+              0
+            ) / validTemps.length
+          : null;
+
+      const recentTemps = weatherDays
+        .slice(-3)
+        .map((day) => day.averageTemp)
+        .filter(Number.isFinite);
+
+      const recentTemp =
+        recentTemps.length > 0
+          ? recentTemps.reduce(
+              (sum, temp) => sum + temp,
+              0
+            ) / recentTemps.length
+          : null;
+
+      const earlierTemps = weatherDays
+        .slice(0, -3)
+        .map((day) => day.averageTemp)
+        .filter(Number.isFinite);
+
+      const earlierTemp =
+        earlierTemps.length > 0
+          ? earlierTemps.reduce(
+              (sum, temp) => sum + temp,
+              0
+            ) / earlierTemps.length
+          : null;
+
+      const tempChange =
+        Number.isFinite(recentTemp) &&
+        Number.isFinite(earlierTemp)
+          ? recentTemp - earlierTemp
+          : null;
+
+// ------------------------------
+// キノコチャンス判定
+// ------------------------------
+
+// キノコは「14日間に雨が降ったか」より
+// 「ここ数日にどれだけ雨があったか」を重視する
+const recent5Days = weatherDays.slice(-5);
+
+const recent5Rain = recent5Days.reduce(
+  (sum, day) => sum + day.precipitation,
+  0
+);
+
+// 最後に0.5mm以上の雨が降ってから何日経ったか
+let daysSinceRain = null;
+
+for (let i = weatherDays.length - 1; i >= 0; i--) {
+  if (weatherDays[i].precipitation >= 0.5) {
+    daysSinceRain =
+      weatherDays.length - 1 - i;
+    break;
+  }
+}
+
+let score = 0;
+
+// 直近5日の雨を一番重くする
+if (recent5Rain >= 25) {
+  score += 3;
+} else if (recent5Rain >= 10) {
+  score += 2;
+} else if (recent5Rain >= 3) {
+  score += 1;
+}
+
+// 雨が最近かどうか
+if (daysSinceRain !== null) {
+  if (daysSinceRain <= 1) {
+    score += 2;
+  } else if (daysSinceRain <= 3) {
+    score += 1;
+  } else if (daysSinceRain >= 7) {
+    score -= 2;
+  } else if (daysSinceRain >= 5) {
+    score -= 1;
+  }
+}
+
+// 14日間に何度か雨があるなら少し加点
+if (rainDays >= 5) {
+  score += 1;
+}
+
+// 14日トータルでかなり降っていれば少し加点
+if (rainTotal >= 50) {
+  score += 1;
+}
+
+// 最近涼しくなっているなら加点
+if (
+  tempChange !== null &&
+  tempChange <= -2
+) {
+  score += 1;
+}
+
+// 急にかなり暑くなっているなら減点
+if (
+  tempChange !== null &&
+  tempChange >= 3
+) {
+  score -= 1;
+}
+
+let levelText = "";
+let message = "";
+
+const rainTimingText =
+  daysSinceRain === null
+    ? "14日間まとまった雨なし"
+    : daysSinceRain === 0
+      ? "今日、雨あり"
+      : daysSinceRain === 1
+        ? "昨日、雨あり"
+        : `最後の雨から${daysSinceRain}日`;
+
+
+// 「高」は最近の雨も揃っていないと出さない
+if (
+  score >= 6 &&
+  recent5Rain >= 10 &&
+  daysSinceRain !== null &&
+  daysSinceRain <= 3
+) {
+  levelText =
+    "🔥 キノコチャンス：高";
+
+  message =
+    `直近5日で${recent5Rain.toFixed(1)}mmの雨。${rainTimingText}。` +
+    "地面の水分が残っていそうで、かなり期待できる条件です。";
+} else if (score >= 3) {
+  levelText =
+    "🍄 キノコチャンス：中";
+
+  message =
+    `直近5日で${recent5Rain.toFixed(1)}mmの雨。${rainTimingText}。` +
+    "条件は悪くありません。場所によっては期待できそうです。";
+} else {
+  levelText =
+    "🌱 キノコチャンス：低め";
+
+  message =
+    `直近5日で${recent5Rain.toFixed(1)}mmの雨。${rainTimingText}。` +
+    "最近の水分条件はやや弱めです。";
+}
+
+      chanceLevel.textContent =
+        levelText;
+
+      chanceMessage.textContent =
+        `${location.name}：${message} ※天気だけから見た目安です。`;
+
+      document.getElementById(
+        "chanceRainTotal"
+      ).textContent =
+        `${rainTotal.toFixed(1)} mm`;
+
+      document.getElementById(
+        "chanceRainDays"
+      ).textContent =
+        `${rainDays}日`;
+
+      document.getElementById(
+        "chanceAverageTemp"
+      ).textContent =
+        averageTemp !== null
+          ? `${averageTemp.toFixed(1)}℃`
+          : "--";
+
+      let recentTempText =
+        recentTemp !== null
+          ? `${recentTemp.toFixed(1)}℃`
+          : "--";
+
+      if (
+        recentTemp !== null &&
+        tempChange !== null
+      ) {
+        const arrow =
+          tempChange < -0.5
+            ? "↓"
+            : tempChange > 0.5
+              ? "↑"
+              : "→";
+
+        recentTempText +=
+          ` ${arrow}${Math.abs(tempChange).toFixed(1)}℃`;
+      }
+
+      document.getElementById(
+        "chanceRecentTemp"
+      ).textContent =
+        recentTempText;
+    } catch (error) {
+      console.error(
+        "キノコチャンスの取得に失敗しました",
+        error
+      );
+
+      chanceLevel.textContent =
+        "⚠️ 天気を取得できませんでした";
+
+      chanceMessage.textContent =
+        error.message || String(error);
+    }
+  });
 
 document.getElementById("addMushroomBtn").addEventListener("click", () => {
   const area = document.getElementById("extraMushrooms");
@@ -1146,6 +1488,11 @@ function renderLibrary() {
     if (f === "poison" && r.category !== "毒") return false;
     return true;
   });
+
+  filtered.sort((a, b) => {
+  return String(b.date || "").localeCompare(String(a.date || ""));
+});
+  
 
   libraryCount.textContent = `${filtered.length}件`;
 
