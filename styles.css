@@ -1087,3 +1087,235 @@ dialog::backdrop { background:rgba(0,0,0,.45); }
     font-size: 9px;
   }
 }
+
+/* ==================================================
+   ホーム：キノコチャンス
+   ================================================== */
+
+.mushroom-chance-card {
+  margin: 18px 0 24px;
+  padding: 16px;
+  border: 1px solid #cad8c4;
+  border-radius: 20px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(250, 249, 240, 0.98),
+      rgba(233, 241, 227, 0.96)
+    );
+  box-shadow: 0 5px 16px rgba(40, 70, 45, 0.08);
+}
+
+.mushroom-chance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 13px;
+}
+
+.mushroom-chance-header h2 {
+  margin: 2px 0 0;
+  color: #294d36;
+  font-size: 18px;
+}
+
+.chance-kicker {
+  display: block;
+  color: #7b8d77;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.chance-location-label {
+  display: block;
+  margin-bottom: 10px;
+  color: #405943;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+#chanceLocationSelect {
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px 13px;
+  border: 1px solid #c6d4bf;
+  border-radius: 13px;
+  background: #fffdf7;
+  color: #294534;
+  font: inherit;
+  font-size: 13px;
+}
+
+#checkMushroomChanceBtn {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 2px;
+  border-radius: 14px;
+  font-weight: 800;
+}
+
+/* 結果 */
+.chance-result {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #d4dfcf;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.chance-result[hidden] {
+  display: none;
+}
+
+.chance-level {
+  margin-bottom: 6px;
+  color: #294d36;
+  font-size: 17px;
+  font-weight: 850;
+}
+
+.chance-message {
+  margin: 0 0 13px;
+  color: #586657;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.chance-weather-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.chance-weather-grid > div {
+  padding: 10px 7px;
+  border: 1px solid #d8e1d2;
+  border-radius: 12px;
+  background: #f5f7ef;
+  text-align: center;
+}
+
+.chance-weather-grid span {
+  display: block;
+  margin-bottom: 4px;
+  color: #71806f;
+  font-size: 9px;
+}
+
+.chance-weather-grid strong {
+  display: block;
+  color: #294d36;
+  font-size: 13px;
+}
+
+
+/* スマホ */
+@media (max-width: 600px) {
+  .mushroom-chance-card {
+    margin: 15px 0 20px;
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .chance-weather-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chance-weather-grid > div {
+    padding: 9px 6px;
+  }
+}
+
+/* ==================================================
+   キノコチャンス：過去記録からの候補
+   ================================================== */
+
+.mushroom-prediction {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed #b8c8b2;
+}
+
+.prediction-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.prediction-header h3 {
+  margin: 0;
+  color: #294d36;
+  font-size: 15px;
+}
+
+.prediction-header span {
+  color: #7b8978;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+#mushroomPredictionList {
+  display: grid;
+  gap: 8px;
+}
+
+.prediction-empty {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f3f6ee;
+  color: #6b7868;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.prediction-item {
+  padding: 11px 12px;
+  border: 1px solid #d4dfcf;
+  border-radius: 13px;
+  background: #fffdf7;
+}
+
+.prediction-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.prediction-name {
+  min-width: 0;
+  color: #294d36;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.prediction-score {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #47684f;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.prediction-reason {
+  margin: 6px 0 0;
+  color: #697567;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .prediction-header {
+    align-items: center;
+  }
+
+  .prediction-header span {
+    font-size: 8px;
+  }
+}
