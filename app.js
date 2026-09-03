@@ -364,6 +364,16 @@ savedLocationSelect.addEventListener("change", () => {
   }
 });
 
+document.getElementById("placeInput").addEventListener("input", () => {
+  if (!currentLocationId) return;
+
+  currentLocationId = null;
+  savedLocationSelect.value = "";
+
+  document.getElementById("locationStatus").textContent =
+    "場所名を手入力したため、登録済みの場所との紐付けを解除しました";
+});
+
 document.getElementById("getWeatherBtn").addEventListener("click", async (event) => {
   event.preventDefault();
 
@@ -892,14 +902,17 @@ function renderStats() {
 }
 
 function renderRecent() {
-  const latest = records.slice(0, 4);
+  const latest = records.slice(0, 6);
+
   if (!latest.length) {
-    recentList.className = "card-list empty-state";
+    recentList.className = "recent-grid empty-state";
     recentList.textContent = "まだ発見記録がありません。";
     return;
   }
-  recentList.className = "card-list";
+
+  recentList.className = "recent-grid";
   recentList.innerHTML = latest.map(cardHTML).join("");
+
   attachCardEvents(recentList);
 }
 
@@ -1278,24 +1291,30 @@ function openDetail(id) {
   observation.latitude != null &&
   observation.longitude != null
     ? `
-      <div class="detail-location">
-        <h3>📍 発見位置</h3>
+      
+  <div class="detail-location">
+    <h3>📍 発見位置</h3>
 
-        <p class="coordinates">
-          緯度 ${observation.latitude}<br>
-          経度 ${observation.longitude}
-        </p>
+    <div
+      id="detailLocationMap"
+      class="detail-location-map"
+    ></div>
 
-        <a
-          class="map-link"
-          href="https://www.google.com/maps/search/?api=1&query=${observation.latitude},${observation.longitude}"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          🗺 Googleマップで開く
-        </a>
-      </div>
-    `
+    <p class="coordinates">
+      緯度 ${observation.latitude}<br>
+      経度 ${observation.longitude}
+    </p>
+
+    <a
+      class="map-link"
+      href="https://www.google.com/maps/search/?api=1&query=${observation.latitude},${observation.longitude}"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      🗺 Googleマップで開く
+    </a>
+  </div>
+`
     : `
       <div class="detail-location">
         <h3>📍 発見位置</h3>
@@ -1407,6 +1426,45 @@ const photosHtml =
   <button class="secondary-btn" id="editOneBtn" type="button">✏️ この記録を編集</button>
     <button class="danger-btn" id="deleteOneBtn" type="button">この記録を削除</button>
   `;
+
+  // 詳細画面の発見位置ミニマップ
+if (
+  observation &&
+  observation.latitude != null &&
+  observation.longitude != null
+) {
+  const detailMapElement =
+    document.getElementById("detailLocationMap");
+
+  if (detailMapElement) {
+    const lat = Number(observation.latitude);
+    const lng = Number(observation.longitude);
+
+    const detailMap = L.map(detailMapElement, {
+      zoomControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      touchZoom: false,
+      boxZoom: false,
+      keyboard: false
+    }).setView([lat, lng], 14);
+
+    L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }
+    ).addTo(detailMap);
+
+    L.marker([lat, lng]).addTo(detailMap);
+
+    setTimeout(() => {
+      detailMap.invalidateSize();
+    }, 100);
+  }
+}
 
   const photoGallery = detailContent.querySelector(".photo-gallery");
 const photoDots = [...detailContent.querySelectorAll(".photo-dot")];
