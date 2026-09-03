@@ -344,69 +344,6 @@ savedLocationSelect.addEventListener("change", () => {
   mapCoordinates.textContent =
     `緯度 ${currentLatitude.toFixed(6)} / 経度 ${currentLongitude.toFixed(6)}`;
 
-    // 緯度経度から場所名を自動取得
-try {
-  const reverseResponse = await fetch(
-    `https://nominatim.openstreetmap.org/reverse` +
-    `?format=jsonv2` +
-    `&lat=${encodeURIComponent(currentLatitude)}` +
-    `&lon=${encodeURIComponent(currentLongitude)}` +
-    `&zoom=18` +
-    `&addressdetails=1` +
-    `&accept-language=ja`
-  );
-
-  if (!reverseResponse.ok) {
-    throw new Error(`場所名取得エラー ${reverseResponse.status}`);
-  }
-
-  const placeData = await reverseResponse.json();
-  const address = placeData.address || {};
-
-  const locality =
-    address.city ||
-    address.town ||
-    address.village ||
-    address.hamlet ||
-    address.municipality ||
-    address.county ||
-    "";
-
-  const specificName =
-    placeData.name ||
-    address.neighbourhood ||
-    address.suburb ||
-    "";
-
-  const state = address.state || "";
-
-  const locationParts = [
-    specificName,
-    locality,
-    state
-  ].filter(
-    (part, index, array) =>
-      part && array.indexOf(part) === index
-  );
-
-  const autoPlaceName =
-    locationParts.join("・") ||
-    placeData.display_name ||
-    "";
-
-  if (autoPlaceName) {
-    document.getElementById("placeInput").value =
-      autoPlaceName;
-
-    document.getElementById("locationStatus").textContent =
-      `📷 写真から撮影位置と場所名「${autoPlaceName}」を取得しました`;
-  }
-} catch (geocodeError) {
-  console.warn(
-    "緯度経度から場所名を取得できませんでした",
-    geocodeError
-  );
-}
 
   if (locationMap) {
     locationMap.setView(
@@ -632,6 +569,69 @@ if (editingRecordId === null && window.exifr) {
 
       mapCoordinates.textContent =
         `緯度 ${currentLatitude.toFixed(6)} / 経度 ${currentLongitude.toFixed(6)}`;
+
+        // 緯度経度から場所名を自動取得
+try {
+  const reverseResponse = await fetch(
+    "https://nominatim.openstreetmap.org/reverse" +
+      `?format=jsonv2` +
+      `&lat=${encodeURIComponent(currentLatitude)}` +
+      `&lon=${encodeURIComponent(currentLongitude)}` +
+      `&zoom=18` +
+      `&addressdetails=1` +
+      `&accept-language=ja`
+  );
+
+  if (!reverseResponse.ok) {
+    throw new Error(`場所名取得エラー ${reverseResponse.status}`);
+  }
+
+  const placeData = await reverseResponse.json();
+  const address = placeData.address || {};
+
+  const specificName =
+    placeData.name ||
+    address.neighbourhood ||
+    address.suburb ||
+    "";
+
+  const municipality =
+    address.city ||
+    address.town ||
+    address.village ||
+    address.municipality ||
+    address.county ||
+    "";
+
+  const state = address.state || "";
+
+  const locationParts = [
+    specificName,
+    municipality,
+    state
+  ].filter(
+    (part, index, array) =>
+      part && array.indexOf(part) === index
+  );
+
+  const autoPlaceName =
+    locationParts.join("・") ||
+    placeData.display_name ||
+    "";
+
+  if (autoPlaceName) {
+    document.getElementById("placeInput").value =
+      autoPlaceName;
+
+    document.getElementById("locationStatus").textContent =
+      `📷 写真から撮影位置と場所名「${autoPlaceName}」を取得しました`;
+  }
+} catch (geocodeError) {
+  console.warn(
+    "緯度経度から場所名を取得できませんでした",
+    geocodeError
+  );
+}
 
       if (locationMap) {
         locationMap.setView(
