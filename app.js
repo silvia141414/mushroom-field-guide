@@ -526,6 +526,73 @@ photoInput.addEventListener("change", async (event) => {
   const files = [...(event.target.files || [])];
   if (!files.length) return;
 
+  // 新規登録のときだけ、1枚目の写真から撮影日時・GPSを自動取得
+if (editingRecordId === null && window.exifr) {
+  const firstFile = files[0];
+
+  try {
+    // 撮影日時を取得
+    const exifData = await window.exifr.parse(firstFile, [
+      "DateTimeOriginal",
+      "CreateDate"
+    ]);
+
+    const photoDate =
+      exifData?.DateTimeOriginal ||
+      exifData?.CreateDate;
+
+    if (photoDate instanceof Date && !Number.isNaN(photoDate.getTime())) {
+      const year = photoDate.getFullYear();
+      const month = String(photoDate.getMonth() + 1).padStart(2, "0");
+      const day = String(photoDate.getDate()).padStart(2, "0");
+
+      dateInput.value = `${year}-${month}-${day}`;
+    }
+
+    // GPSを取得
+    const gps = await window.exifr.gps(firstFile);
+
+    if (
+      gps &&
+      Number.isFinite(gps.latitude) &&
+      Number.isFinite(gps.longitude)
+    ) {
+      currentLocationId = null;
+      currentLatitude = gps.latitude;
+      currentLongitude = gps.longitude;
+
+      document.getElementById("savedLocationSelect").value = "";
+
+      document.getElementById("locationStatus").textContent =
+        `📷 写真の撮影位置を取得しました：緯度 ${currentLatitude.toFixed(6)} / 経度 ${currentLongitude.toFixed(6)}`;
+
+      mapCoordinates.textContent =
+        `緯度 ${currentLatitude.toFixed(6)} / 経度 ${currentLongitude.toFixed(6)}`;
+
+      if (locationMap) {
+        locationMap.setView(
+          [currentLatitude, currentLongitude],
+          15
+        );
+
+        if (locationMarker) {
+          locationMarker.setLatLng([
+            currentLatitude,
+            currentLongitude
+          ]);
+        } else {
+          locationMarker = L.marker([
+            currentLatitude,
+            currentLongitude
+          ]).addTo(locationMap);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("写真の撮影情報を取得できませんでした", error);
+  }
+}
+
   pendingPhotos = [];
 
   for (const file of files) {
