@@ -5,6 +5,9 @@ let records = loadRecords();
 let observations = loadObservations();
 let currentLatitude = null;
 let currentLongitude = null;
+let currentLocationId = null;
+let currentLocationFilterId = null;
+let savedLocations = [];
 let currentWeatherHistory = [];
 let currentWeatherFetchedAt = null;
 let pendingPhoto = "";
@@ -108,6 +111,7 @@ document.getElementById("getLocationBtn").addEventListener("click", (event) => {
 
   navigator.geolocation.getCurrentPosition(
     (position) => {
+      currentLocationId = null;
       currentLatitude = position.coords.latitude;
       currentLongitude = position.coords.longitude;
 
@@ -122,6 +126,242 @@ document.getElementById("getLocationBtn").addEventListener("click", (event) => {
   console.error(error);
 }
   );
+});
+
+const openMapBtn = document.getElementById("openMapBtn");
+const mapPicker = document.getElementById("mapPicker");
+const mapCoordinates = document.getElementById("mapCoordinates");
+
+let locationMap = null;
+let locationMarker = null;
+
+openMapBtn.addEventListener("click", () => {
+  mapPicker.hidden = false;
+
+  if (!locationMap) {
+    const startLat =
+      currentLatitude !== null ? currentLatitude : 43.0621;
+    const startLng =
+      currentLongitude !== null ? currentLongitude : 141.3544;
+
+    const startZoom =
+      currentLatitude !== null && currentLongitude !== null ? 15 : 8;
+
+    locationMap = L.map("locationMap").setView(
+      [startLat, startLng],
+      startZoom
+    );
+
+    L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }
+    ).addTo(locationMap);
+
+    if (
+      currentLatitude !== null &&
+      currentLongitude !== null
+    ) {
+      locationMarker = L.marker([
+        currentLatitude,
+        currentLongitude
+      ]).addTo(locationMap);
+    }
+
+    locationMap.on("click", (event) => {
+      currentLocationId = null;
+      currentLatitude = event.latlng.lat;
+      currentLongitude = event.latlng.lng;
+
+      if (locationMarker) {
+        locationMarker.setLatLng([
+          currentLatitude,
+          currentLongitude
+        ]);
+      } else {
+        locationMarker = L.marker([
+          currentLatitude,
+          currentLongitude
+        ]).addTo(locationMap);
+      }
+
+      mapCoordinates.textContent =
+        `緯度 ${currentLatitude.toFixed(6)} / 経度 ${currentLongitude.toFixed(6)}`;
+
+      document.getElementById("locationStatus").textContent =
+        "🗺️ 地図で場所を指定しました";
+    });
+  } else {
+    if (
+      currentLatitude !== null &&
+      currentLongitude !== null
+    ) {
+      locationMap.setView(
+        [currentLatitude, currentLongitude],
+        15
+      );
+    }
+  }
+
+  setTimeout(() => {
+    locationMap.invalidateSize();
+  }, 100);
+});
+
+const saveLocationBtn = document.getElementById("saveLocationBtn");
+
+saveLocationBtn.addEventListener("click", async () => {
+  const placeName =
+    document.getElementById("placeInput").value.trim();
+
+  if (!placeName) {
+    alert("先に場所名を入力してください");
+    return;
+  }
+
+  if (
+    currentLatitude === null ||
+    currentLongitude === null
+  ) {
+    alert("先に地図で場所を指定してください");
+    return;
+  }
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await window.supabaseClient.auth.getSession();
+
+  if (sessionError) {
+    console.error(sessionError);
+    alert("ログイン状態を確認できませんでした");
+    return;
+  }
+
+  if (!session?.user) {
+    alert("場所を登録するにはログインしてください");
+    return;
+  }
+
+  
+
+  const locationId =
+    crypto.randomUUID
+      ? crypto.randomUUID()
+      : String(Date.now());
+
+  const { error } = await window.supabaseClient
+    .from("locations")
+    .insert({
+      id: locationId,
+      user_id: session.user.id,
+      name: placeName,
+      latitude: currentLatitude,
+      longitude: currentLongitude
+    });
+
+  if (error) {
+    console.error(error);
+    alert("場所を登録できませんでした");
+    return;
+  }
+
+  currentLocationId = locationId;
+
+  document.getElementById("locationStatus").textContent =
+    `⭐ 「${placeName}」を登録しました`;
+
+    await loadSavedLocations();
+
+document.getElementById("savedLocationSelect").value = locationId;
+
+});
+
+
+async function loadSavedLocations() {
+  const savedLocationSelect =
+    document.getElementById("savedLocationSelect");
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await window.supabaseClient.auth.getSession();
+
+  if (sessionError || !session?.user) return;
+
+  const { data: locations, error } =
+    await window.supabaseClient
+      .from("locations")
+      .select("*")
+      .order("name", { ascending: true });
+
+      savedLocations = locations || [];
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  savedLocationSelect.innerHTML =
+    `<option value="">選択しない</option>`;
+
+  locations.forEach((location) => {
+    const option = document.createElement("option");
+
+    option.value = location.id;
+    option.textContent = location.name;
+    option.dataset.latitude = location.latitude;
+    option.dataset.longitude = location.longitude;
+
+    savedLocationSelect.appendChild(option);
+  });
+}
+
+const savedLocationSelect =
+  document.getElementById("savedLocationSelect");
+
+savedLocationSelect.addEventListener("change", () => {
+  const selectedOption =
+    savedLocationSelect.options[savedLocationSelect.selectedIndex];
+
+  if (!selectedOption || !selectedOption.value) {
+    currentLocationId = null;
+    return;
+  }
+
+  currentLocationId = selectedOption.value;
+  currentLatitude = Number(selectedOption.dataset.latitude);
+  currentLongitude = Number(selectedOption.dataset.longitude);
+
+  document.getElementById("placeInput").value =
+    selectedOption.textContent;
+
+  document.getElementById("locationStatus").textContent =
+    `⭐ 登録済みの場所「${selectedOption.textContent}」を選択しました`;
+
+  mapCoordinates.textContent =
+    `緯度 ${currentLatitude.toFixed(6)} / 経度 ${currentLongitude.toFixed(6)}`;
+
+  if (locationMap) {
+    locationMap.setView(
+      [currentLatitude, currentLongitude],
+      15
+    );
+
+    if (locationMarker) {
+      locationMarker.setLatLng([
+        currentLatitude,
+        currentLongitude
+      ]);
+    } else {
+      locationMarker = L.marker([
+        currentLatitude,
+        currentLongitude
+      ]).addTo(locationMap);
+    }
+  }
 });
 
 document.getElementById("getWeatherBtn").addEventListener("click", async (event) => {
@@ -460,6 +700,7 @@ if (linkedObservationId) {
       ...observations[observationIndex],
       date: updatedRecord.date,
       place: updatedRecord.place,
+      locationId: currentLocationId,
       latitude: currentLatitude,
       longitude: currentLongitude,
       weather: {
@@ -486,6 +727,7 @@ if (linkedObservationId) {
 
     saveRecords();
     renderAll();
+    renderLocationBrowser();
 
     await syncToCloud();
 
@@ -493,6 +735,14 @@ if (linkedObservationId) {
     saveRecordBtn.textContent = "この発見を保存";
 
     recordForm.reset();
+
+    currentLocationId = null;
+currentLatitude = null;
+currentLongitude = null;
+document.getElementById("savedLocationSelect").value = "";
+document.getElementById("locationStatus").textContent =
+  "緯度・経度はまだ取得していません";
+
     dateInput.value = todayLocal();
     pendingPhoto = "";
     pendingPhotos = [];
@@ -516,6 +766,7 @@ if (linkedObservationId) {
     id: observationId,
     date: document.getElementById("dateInput").value,
     place: document.getElementById("placeInput").value.trim(),
+    locationId: currentLocationId,
 
     latitude: currentLatitude,
     longitude: currentLongitude,
@@ -592,6 +843,24 @@ const extraRecord = {
   await syncToCloud();
 
   recordForm.reset();
+  currentLocationId = null;
+currentLatitude = null;
+currentLongitude = null;
+
+document.getElementById("savedLocationSelect").value = "";
+
+document.getElementById("locationStatus").textContent =
+  "緯度・経度はまだ取得していません";
+
+mapCoordinates.textContent =
+  "地図をタップして場所を指定してください";
+
+  if (locationMarker && locationMap) {
+  locationMap.removeLayer(locationMarker);
+  locationMarker = null;
+}
+
+
   dateInput.value = todayLocal();
   pendingPhoto = "";
   pendingPhotos = [];
@@ -637,9 +906,26 @@ function renderRecent() {
 function renderLibrary() {
   const q = searchInput.value.trim().toLowerCase();
   const f = filterInput.value;
+  const locationObservationIds = currentLocationFilterId
+  ? new Set(
+      observations
+        .filter(
+          (o) =>
+            String(o.locationId) === String(currentLocationFilterId)
+        )
+        .map((o) => String(o.id))
+    )
+  : null;
 
   let filtered = records.filter(r => {
-    const haystack = `${r.name} ${r.place} ${r.memo} ${r.stage} ${r.category}`.toLowerCase();
+  if (
+    locationObservationIds &&
+    !locationObservationIds.has(String(r.observationId))
+  ) {
+    return false;
+  }
+
+  const haystack = `${r.name} ${r.place} ${r.memo} ${r.stage} ${r.category}`.toLowerCase();
     if (q && !haystack.includes(q)) return false;
     if (f === "unknown" && r.name !== "未同定") return false;
     if (f === "food" && r.category !== "食用") return false;
@@ -659,6 +945,299 @@ function renderLibrary() {
   libraryList.innerHTML = filtered.map(cardHTML).join("");
   attachCardEvents(libraryList);
 }
+
+function renderLocationBrowser() {
+  const locationBrowseList =
+    document.getElementById("locationBrowseList");
+
+  if (!locationBrowseList) return;
+
+  if (!savedLocations.length) {
+    locationBrowseList.innerHTML =
+      `<p class="muted">登録した場所はまだありません。</p>`;
+    return;
+  }
+
+  locationBrowseList.innerHTML = savedLocations
+    .map((location) => {
+      const observationIds = new Set(
+        observations
+          .filter(
+            (o) =>
+              String(o.locationId) === String(location.id)
+          )
+          .map((o) => String(o.id))
+      );
+
+      const count = records.filter((r) =>
+        observationIds.has(String(r.observationId))
+      ).length;
+
+      return `
+  <div class="location-entry">
+
+    <div class="location-row">
+
+      <button
+        class="location-browse-btn"
+        type="button"
+        data-location-id="${escapeHTML(location.id)}"
+      >
+        <span>${escapeHTML(location.name)}</span>
+        <span>${count}件</span>
+      </button>
+
+      <button
+        class="location-menu-btn"
+        type="button"
+        data-location-menu-id="${escapeHTML(location.id)}"
+        aria-label="${escapeHTML(location.name)}のメニュー"
+      >
+        ⋯
+      </button>
+
+    </div>
+
+    <div
+      class="location-actions"
+      data-location-actions-id="${escapeHTML(location.id)}"
+      hidden
+    >
+      <button
+        class="location-rename-btn"
+        type="button"
+        data-location-id="${escapeHTML(location.id)}"
+      >
+        ✏️ 名前を変更
+      </button>
+
+      <button
+        class="location-delete-btn"
+        type="button"
+        data-location-id="${escapeHTML(location.id)}"
+      >
+        🗑️ 場所を削除
+      </button>
+    </div>
+
+  </div>
+`;
+    })
+    .join("");
+}
+
+
+  locationBrowseList.addEventListener("click", (event) => {
+  const menuButton = event.target.closest(".location-menu-btn");
+  if (!menuButton) return;
+
+  const locationId = menuButton.dataset.locationMenuId;
+
+  const targetMenu = locationBrowseList.querySelector(
+    `[data-location-actions-id="${locationId}"]`
+  );
+
+  document
+    .querySelectorAll(".location-actions")
+    .forEach((menu) => {
+      if (menu !== targetMenu) {
+        menu.hidden = true;
+      }
+    });
+
+  targetMenu.hidden = !targetMenu.hidden;
+});
+
+locationBrowseList.addEventListener("click", async (event) => {
+  const renameButton = event.target.closest(".location-rename-btn");
+  if (!renameButton) return;
+
+  const locationId = renameButton.dataset.locationId;
+
+  const location = savedLocations.find(
+    (item) => String(item.id) === String(locationId)
+  );
+
+  if (!location) return;
+
+  const inputName = prompt(
+    "新しい場所名を入力してください",
+    location.name
+  );
+
+  if (inputName === null) return;
+
+  const newName = inputName.trim();
+
+  if (!newName) {
+    alert("場所名を入力してください");
+    return;
+  }
+
+  if (newName === location.name) return;
+
+  const { error } = await window.supabaseClient
+    .from("locations")
+    .update({
+      name: newName
+    })
+    .eq("id", locationId);
+
+  if (error) {
+    console.error(error);
+    alert("場所名を変更できませんでした");
+    return;
+  }
+
+  const linkedObservationIds = new Set(
+    observations
+      .filter(
+        (o) => String(o.locationId) === String(locationId)
+      )
+      .map((o) => String(o.id))
+  );
+
+  observations = observations.map((o) =>
+    String(o.locationId) === String(locationId)
+      ? {
+          ...o,
+          place: newName
+        }
+      : o
+  );
+
+  records = records.map((r) =>
+    linkedObservationIds.has(String(r.observationId))
+      ? {
+          ...r,
+          place: newName
+        }
+      : r
+  );
+
+  saveObservations();
+  saveRecords();
+
+  await loadSavedLocations();
+
+  if (String(currentLocationId) === String(locationId)) {
+    document.getElementById("savedLocationSelect").value =
+      locationId;
+
+    document.getElementById("placeInput").value =
+      newName;
+  }
+
+  if (String(currentLocationFilterId) === String(locationId)) {
+    showLocationListBtn.textContent =
+      `📍 ${newName} の記録`;
+  }
+
+  renderAll();
+  renderLocationBrowser();
+
+  await syncToCloud();
+});
+
+locationBrowseList.addEventListener("click", async (event) => {
+  const deleteButton = event.target.closest(".location-delete-btn");
+  if (!deleteButton) return;
+
+  const locationId = deleteButton.dataset.locationId;
+
+  const location = savedLocations.find(
+    (item) => String(item.id) === String(locationId)
+  );
+
+  if (!location) return;
+
+  const confirmed = confirm(
+    `「${location.name}」を登録場所から削除しますか？\n\nキノコの記録自体は削除されません。`
+  );
+
+  if (!confirmed) return;
+
+  const { error } = await window.supabaseClient
+    .from("locations")
+    .delete()
+    .eq("id", locationId);
+
+  if (error) {
+    console.error(error);
+    alert("場所を削除できませんでした");
+    return;
+  }
+
+  // 過去の観察記録は残して、場所IDとの紐付けだけ外す
+  observations = observations.map((o) =>
+    String(o.locationId) === String(locationId)
+      ? {
+          ...o,
+          locationId: null
+        }
+      : o
+  );
+
+  saveObservations();
+
+  // 今選択中の場所だった場合は解除
+  if (String(currentLocationId) === String(locationId)) {
+    currentLocationId = null;
+    document.getElementById("savedLocationSelect").value = "";
+  }
+
+  // 場所別図鑑で表示中だった場合も解除
+  if (String(currentLocationFilterId) === String(locationId)) {
+    currentLocationFilterId = null;
+    showLocationListBtn.textContent = "📍 場所から見る";
+    clearLocationFilterBtn.hidden = true;
+  }
+
+  await loadSavedLocations();
+
+  renderAll();
+  renderLocationBrowser();
+
+  await syncToCloud();
+});
+
+  locationBrowseList.addEventListener("click", (event) => {
+  const button = event.target.closest(".location-browse-btn");
+  if (!button) return;
+
+  currentLocationFilterId = button.dataset.locationId;
+
+  const location = savedLocations.find(
+    (item) => String(item.id) === String(currentLocationFilterId)
+  );
+
+  showLocationListBtn.textContent =
+    location
+      ? `📍 ${location.name} の記録`
+      : "📍 場所から見る";
+
+  clearLocationFilterBtn.hidden = false;
+
+  renderLibrary();
+});
+
+clearLocationFilterBtn.addEventListener("click", () => {
+  currentLocationFilterId = null;
+
+  showLocationListBtn.textContent = "📍 場所から見る";
+
+  clearLocationFilterBtn.hidden = true;
+
+  renderLibrary();
+});
+
+showLocationListBtn.addEventListener("click", () => {
+  locationBrowsePanel.hidden = !locationBrowsePanel.hidden;
+
+  if (!locationBrowsePanel.hidden) {
+    renderLocationBrowser();
+  }
+});
 
 function cardHTML(r) {
   const safeName = escapeHTML(r.name);
@@ -884,6 +1463,9 @@ if (photoGallery && photoDots.length > 0 && photoSlides.length > 0) {
 if (editingObservation) {
   currentLatitude = editingObservation.latitude ?? null;
   currentLongitude = editingObservation.longitude ?? null;
+  currentLocationId = editingObservation.locationId ?? null;
+  document.getElementById("savedLocationSelect").value =
+  currentLocationId || "";
   currentWeatherHistory =
     editingObservation.weather?.history14 ?? [];
   currentWeatherFetchedAt =
@@ -1190,6 +1772,7 @@ async function syncToCloud() {
       user_id: userId,
       date: o.date || null,
       place: o.place || "",
+      location_id: o.locationId || null,
       latitude: o.latitude ?? null,
       longitude: o.longitude ?? null,
       weather: o.weather ?? null
@@ -1303,6 +1886,7 @@ async function pullFromCloud() {
       id: o.id,
       date: o.date,
       place: o.place || "",
+      locationId: o.location_id || null,
       latitude: o.latitude,
       longitude: o.longitude,
       weather: o.weather
@@ -1362,6 +1946,7 @@ records = downloadedRecords;
   }
 }
 
+
 pullBtn.addEventListener("click", pullFromCloud);
 
 
@@ -1390,6 +1975,7 @@ window.supabaseClient.auth.onAuthStateChange(() => {
 
   if (session?.user) {
     await pullFromCloud();
+    await loadSavedLocations();
   } else {
     renderAll();
   }
