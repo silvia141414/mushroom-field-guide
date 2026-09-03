@@ -11,6 +11,10 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
+  <link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
 </head>
 <body>
   <div class="app-shell">
@@ -93,15 +97,40 @@
               場所
               <input id="placeInput" type="text" placeholder="例：道民の森 / ○○公園">
             </label>
-            <div class="location-box">
-            <button id="getLocationBtn" class="secondary-btn" type="button">
-              📍 現在地を取得
-            </button>
+           <div class="location-box">
 
-            <p id="locationStatus" class="muted">
-            緯度・経度はまだ取得していません
-          </p>
-          </div>
+  <label>
+    登録済みの場所
+    <select id="savedLocationSelect">
+      <option value="">選択しない</option>
+    </select>
+  </label>
+
+  <button id="getLocationBtn" class="secondary-btn" type="button">
+    📍 現在地を取得
+  </button>
+
+  <button id="openMapBtn" class="secondary-btn" type="button">
+    🗺️ 地図から場所を指定
+  </button>
+
+  <div id="mapPicker" hidden>
+    <div id="locationMap"></div>
+
+    <p id="mapCoordinates" class="muted">
+      地図をタップして場所を指定してください
+    </p>
+
+    <button id="saveLocationBtn" class="secondary-btn" type="button">
+      ⭐ この場所を登録
+    </button>
+  </div>
+
+  <p id="locationStatus" class="muted">
+    緯度・経度はまだ取得していません
+  </p>
+
+</div>
           <div class="weather-box">
             <button id="getWeatherBtn" class="secondary-btn" type="button">
               🌥️ 過去14日間の天気を取得
@@ -133,6 +162,31 @@
           <h2>図鑑</h2>
           <span id="libraryCount" class="muted"></span>
         </div>
+
+        <div class="location-browser">
+  <button
+    id="showLocationListBtn"
+    class="secondary-btn"
+    type="button"
+  >
+    📍 場所から見る
+  </button>
+
+  <div id="locationBrowsePanel" hidden>
+    <h3>登録した場所</h3>
+
+    <div id="locationBrowseList"></div>
+
+    <button
+      id="clearLocationFilterBtn"
+      class="secondary-btn"
+      type="button"
+      hidden
+    >
+      ← すべての記録に戻る
+    </button>
+  </div>
+</div>
 
         <div class="filters">
           <input id="searchInput" type="search" placeholder="キノコ名・場所・メモを検索">
@@ -248,6 +302,7 @@
  
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="app.js?v= 8"></script>
 </body>
 </html>
