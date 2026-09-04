@@ -486,6 +486,350 @@ async function fetchWeatherHistoryForObservation(
   };
 }
 
+async function repairExistingObservationWeather() {
+  let repaired = 0;
+  let alreadyCorrect = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (let i = 0; i < observations.length; i++) {
+    const observation = observations[i];
+
+    const observationDate = observation.date;
+    const latitude = observation.latitude;
+    const longitude = observation.longitude;
+
+    const history =
+      observation.weather?.history14 || [];
+
+    const lastWeatherDate =
+      history.length > 0
+        ? history[history.length - 1]?.date
+        : null;
+
+    // すでに発見日と天気終了日が一致していれば触らない
+    if (
+      history.length === 14 &&
+      lastWeatherDate === observationDate
+    ) {
+      alreadyCorrect++;
+      continue;
+    }
+
+    // 日付かGPSがない記録は自動修復できない
+    if (
+      !observationDate ||
+      latitude == null ||
+      longitude == null
+    ) {
+      console.warn(
+        "天気修復をスキップ",
+        observation
+      );
+
+      skipped++;
+      continue;
+    }
+
+    try {
+      console.log(
+        `🌦️ ${i + 1}/${observations.length} 修復中：`,
+        observationDate,
+        observation.place
+      );
+
+      const weatherResult =
+        await fetchWeatherHistoryForObservation(
+          latitude,
+          longitude,
+          observationDate
+        );
+
+      observations[i] = {
+        ...observation,
+        weather: {
+          ...(observation.weather || {}),
+          fetchedAt: weatherResult.fetchedAt,
+          current: null,
+          history14: weatherResult.history
+        }
+      };
+
+      repaired++;
+
+      // APIへ一気に連打しすぎないよう少し待つ
+      await new Promise((resolve) =>
+        setTimeout(resolve, 250)
+      );
+    } catch (error) {
+      console.error(
+        "天気修復失敗：",
+        observationDate,
+        observation.place,
+        error
+      );
+
+      failed++;
+    }
+  }
+
+  saveObservations();
+
+  await syncToCloud();
+
+  console.log("🍄 天気修復完了", {
+    repaired,
+    alreadyCorrect,
+    skipped,
+    failed
+  });
+
+  return {
+    repaired,
+    alreadyCorrect,
+    skipped,
+    failed
+  };
+}
+
+// ==================================================
+// キノコチャンス：過去の発見条件との比較
+// ==================================================
+
+function summarizeWeatherHistory(history) {
+  if (!Array.isArray(history) || history.length === 0) {
+    return null;
+  }
+
+  const days = history.map((day) => {
+    const maxTemp = Number(day.maxTemp);
+    const minTemp = Number(day.minTemp);
+    const precipitation =
+      Number(day.precipitation) || 0;
+
+    const averageTemp =
+      Number.isFinite(maxTemp) &&
+      Number.isFinite(minTemp)
+        ? (maxTemp + minTemp) / 2
+        : null;
+
+    return {
+      precipitation,
+      averageTemp
+    };
+  });
+
+  const rainTotal = days.reduce(
+    (sum, day) => sum + day.precipitation,
+    0
+  );
+
+  const rainDays = days.filter(
+    (day) => day.precipitation >= 0.5
+  ).length;
+
+  const recent5Rain = days
+    .slice(-5)
+    .reduce(
+      (sum, day) => sum + day.precipitation,
+      0
+    );
+
+  const validTemps = days
+    .map((day) => day.averageTemp)
+    .filter(Number.isFinite);
+
+  const averageTemp =
+    validTemps.length > 0
+      ? validTemps.reduce(
+          (sum, temp) => sum + temp,
+          0
+        ) / validTemps.length
+      : null;
+
+  return {
+    rainTotal,
+    rainDays,
+    recent5Rain,
+    averageTemp
+  };
+}
+
+
+function calculateDistanceKm(
+  lat1,
+  lng1,
+  lat2,
+  lng2
+) {
+  const toRad = (value) =>
+    value * Math.PI / 180;
+
+  const earthRadiusKm = 6371;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) ** 2;
+
+  return (
+    earthRadiusKm *
+    2 *
+    Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1 - a)
+    )
+  );
+}
+
+
+function getDayOfYear(dateString) {
+  const date = new Date(
+    `${dateString}T12:00:00`
+  );
+
+  const start = new Date(
+    date.getFullYear(),
+    0,
+    0
+  );
+
+  return Math.floor(
+    (date - start) / 86400000
+  );
+}
+
+
+function calculateSeasonDifference(
+  dateA,
+  dateB
+) {
+  const dayA = getDayOfYear(dateA);
+  const dayB = getDayOfYear(dateB);
+
+  const difference =
+    Math.abs(dayA - dayB);
+
+  return Math.min(
+    difference,
+    365 - difference
+  );
+}
+
+
+function clampScore(value) {
+  return Math.max(
+    0,
+    Math.min(1, value)
+  );
+}
+
+
+function compareMushroomConditions({
+  currentWeather,
+  pastWeather,
+  currentDate,
+  pastDate,
+  currentLatitude,
+  currentLongitude,
+  pastLatitude,
+  pastLongitude
+}) {
+  const tempDifference =
+    currentWeather.averageTemp !== null &&
+    pastWeather.averageTemp !== null
+      ? Math.abs(
+          currentWeather.averageTemp -
+          pastWeather.averageTemp
+        )
+      : 8;
+
+  const rainDifference =
+    Math.abs(
+      currentWeather.rainTotal -
+      pastWeather.rainTotal
+    );
+
+  const recentRainDifference =
+    Math.abs(
+      currentWeather.recent5Rain -
+      pastWeather.recent5Rain
+    );
+
+  const rainDaysDifference =
+    Math.abs(
+      currentWeather.rainDays -
+      pastWeather.rainDays
+    );
+
+  const seasonDifference =
+    calculateSeasonDifference(
+      currentDate,
+      pastDate
+    );
+
+  const distanceKm =
+    calculateDistanceKm(
+      currentLatitude,
+      currentLongitude,
+      pastLatitude,
+      pastLongitude
+    );
+
+  const tempScore =
+    clampScore(
+      1 - tempDifference / 8
+    );
+
+  const rainScore =
+    clampScore(
+      1 - rainDifference / 80
+    );
+
+  const recentRainScore =
+    clampScore(
+      1 - recentRainDifference / 40
+    );
+
+  const rainDaysScore =
+    clampScore(
+      1 - rainDaysDifference / 7
+    );
+
+  const seasonScore =
+    clampScore(
+      1 - seasonDifference / 60
+    );
+
+  const distanceScore =
+    clampScore(
+      1 - distanceKm / 100
+    );
+
+  const similarity =
+    (
+      tempScore * 0.25 +
+      rainScore * 0.20 +
+      recentRainScore * 0.20 +
+      rainDaysScore * 0.10 +
+      seasonScore * 0.15 +
+      distanceScore * 0.10
+    ) * 100;
+
+  return {
+    similarity: Math.round(similarity),
+    distanceKm,
+    tempDifference,
+    rainDifference,
+    recentRainDifference,
+    seasonDifference
+  };
+}
+
 document.getElementById("getWeatherBtn").addEventListener("click", async (event) => {
   event.preventDefault();
 
@@ -897,6 +1241,162 @@ if (
         "chanceRecentTemp"
       ).textContent =
         recentTempText;
+        // ==================================================
+// 過去の発見条件と比較して「今、怪しいキノコ」を出す
+// ==================================================
+const predictionList =
+  document.getElementById("mushroomPredictionList");
+
+predictionList.innerHTML = `
+  <p class="prediction-empty">
+    🍄 過去の発見条件と照合中...
+  </p>
+`;
+
+const currentWeatherSummary = {
+  rainTotal,
+  rainDays,
+  recent5Rain,
+  averageTemp
+};
+
+const currentDate =
+  dates[dates.length - 1];
+
+const candidates = [];
+
+observations.forEach((observation) => {
+  const history =
+    observation.weather?.history14 || [];
+
+  if (
+    !observation.date ||
+    observation.latitude == null ||
+    observation.longitude == null ||
+    history.length !== 14
+  ) {
+    return;
+  }
+
+  const pastWeather =
+    summarizeWeatherHistory(history);
+
+  if (!pastWeather) return;
+
+  const comparison =
+    compareMushroomConditions({
+      currentWeather: currentWeatherSummary,
+      pastWeather,
+      currentDate,
+      pastDate: observation.date,
+      currentLatitude: Number(location.latitude),
+      currentLongitude: Number(location.longitude),
+      pastLatitude: Number(observation.latitude),
+      pastLongitude: Number(observation.longitude)
+    });
+
+  const observationRecords =
+    records.filter(
+      (record) =>
+        String(record.observationId) ===
+        String(observation.id)
+    );
+
+  observationRecords.forEach((record) => {
+    if (
+      !record.name ||
+      record.name === "未同定"
+    ) {
+      return;
+    }
+
+    candidates.push({
+      name: record.name,
+      similarity: comparison.similarity,
+      date: observation.date,
+      place: observation.place || "場所不明",
+      distanceKm: comparison.distanceKm,
+      tempDifference:
+        comparison.tempDifference,
+      rainDifference:
+        comparison.rainDifference
+    });
+  });
+});
+
+
+// 同じ種類を複数回見つけている場合は
+// いちばん今の条件に近かった記録を採用
+const bestBySpecies = new Map();
+
+candidates.forEach((candidate) => {
+  const existing =
+    bestBySpecies.get(candidate.name);
+
+  if (
+    !existing ||
+    candidate.similarity >
+      existing.similarity
+  ) {
+    bestBySpecies.set(
+      candidate.name,
+      candidate
+    );
+  }
+});
+
+const predictions =
+  [...bestBySpecies.values()]
+    .sort(
+      (a, b) =>
+        b.similarity -
+        a.similarity
+    )
+    .slice(0, 5);
+
+
+if (!predictions.length) {
+  predictionList.innerHTML = `
+    <p class="prediction-empty">
+      比較できる過去の同定済み記録がまだありません。
+    </p>
+  `;
+} else {
+  predictionList.innerHTML =
+    predictions
+      .map((item) => {
+        const distanceText =
+          item.distanceKm < 1
+            ? `${Math.round(
+                item.distanceKm * 1000
+              )}m`
+            : `${item.distanceKm.toFixed(1)}km`;
+
+        return `
+          <div class="prediction-item">
+            <div class="prediction-item-top">
+              <span class="prediction-name">
+                ${escapeHTML(item.name)}
+              </span>
+
+              <span class="prediction-score">
+                類似度 ${item.similarity}%
+              </span>
+            </div>
+
+            <p class="prediction-reason">
+              ${escapeHTML(item.date)}
+              ・${escapeHTML(item.place)}
+              で発見した時の条件と比較
+              ／ 距離 ${distanceText}
+              ／ 気温差 ${item.tempDifference.toFixed(1)}℃
+              ／ 14日雨量差 ${item.rainDifference.toFixed(1)}mm
+            </p>
+          </div>
+        `;
+      })
+      .join("");
+}
     } catch (error) {
       console.error(
         "キノコチャンスの取得に失敗しました",
