@@ -393,6 +393,99 @@ document.getElementById("placeInput").addEventListener("input", () => {
     "場所名を手入力したため、登録済みの場所との紐付けを解除しました";
 });
 
+async function fetchWeatherHistoryForObservation(
+  latitude,
+  longitude,
+  observationDate
+) {
+  const startDate = shiftDate(observationDate, -13);
+  const endDate = observationDate;
+
+  const url =
+    "https://archive-api.open-meteo.com/v1/archive" +
+    `?latitude=${encodeURIComponent(latitude)}` +
+    `&longitude=${encodeURIComponent(longitude)}` +
+    `&start_date=${startDate}` +
+    `&end_date=${endDate}` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,sunshine_duration` +
+    `&hourly=relative_humidity_2m` +
+    `&timezone=Asia%2FTokyo`;
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(
+      `天気APIエラー ${response.status}`
+    );
+  }
+
+  const data = await response.json();
+
+  const hourlyTimes =
+    data.hourly?.time || [];
+
+  const hourlyHumidity =
+    data.hourly?.relative_humidity_2m || [];
+
+  const history =
+    (data.daily?.time || []).map((date, index) => {
+      const humidityValues = [];
+
+      hourlyTimes.forEach((time, hourlyIndex) => {
+        if (
+          time.startsWith(date) &&
+          hourlyHumidity[hourlyIndex] != null
+        ) {
+          humidityValues.push(
+            Number(hourlyHumidity[hourlyIndex])
+          );
+        }
+      });
+
+      const averageHumidity =
+        humidityValues.length > 0
+          ? Math.round(
+              humidityValues.reduce(
+                (sum, value) => sum + value,
+                0
+              ) / humidityValues.length
+            )
+          : null;
+
+      return {
+        date,
+        weatherCode:
+          data.daily.weather_code?.[index] ?? null,
+
+        maxTemp:
+          data.daily.temperature_2m_max?.[index] ?? null,
+
+        minTemp:
+          data.daily.temperature_2m_min?.[index] ?? null,
+
+        precipitation:
+          data.daily.precipitation_sum?.[index] ?? null,
+
+        averageHumidity,
+
+        sunshineHours:
+          data.daily.sunshine_duration?.[index] != null
+            ? Math.round(
+                (
+                  data.daily.sunshine_duration[index] /
+                  3600
+                ) * 10
+              ) / 10
+            : null
+      };
+    });
+
+  return {
+    fetchedAt: new Date().toISOString(),
+    history
+  };
+}
+
 document.getElementById("getWeatherBtn").addEventListener("click", async (event) => {
   event.preventDefault();
 
@@ -1313,6 +1406,48 @@ document.getElementById("locationStatus").textContent =
     return;
   }
 
+  // ==================================================
+// 保存前に、この発見日の正しい過去14日天気を自動取得
+// ==================================================
+currentWeatherHistory = [];
+currentWeatherFetchedAt = null;
+
+const observationDate =
+  document.getElementById("dateInput").value;
+
+if (
+  currentLatitude !== null &&
+  currentLongitude !== null &&
+  observationDate
+) {
+  try {
+    saveMessage.textContent =
+      "🌦️ 発見前14日間の天気を取得中...";
+
+    const weatherResult =
+      await fetchWeatherHistoryForObservation(
+        currentLatitude,
+        currentLongitude,
+        observationDate
+      );
+
+    currentWeatherHistory =
+      weatherResult.history;
+
+    currentWeatherFetchedAt =
+      weatherResult.fetchedAt;
+  } catch (error) {
+    console.error(
+      "保存時の天気取得に失敗しました",
+      error
+    );
+
+    // 天気取得だけ失敗しても記録自体は保存する
+    currentWeatherHistory = [];
+    currentWeatherFetchedAt = null;
+  }
+}
+
   const observationId = "obs-" + Date.now();
 
   const observation = {
@@ -1417,6 +1552,8 @@ mapCoordinates.textContent =
   dateInput.value = todayLocal();
   pendingPhoto = "";
   pendingPhotos = [];
+  currentWeatherHistory = [];
+currentWeatherFetchedAt = null;
   photoPreview.hidden = true;
   photoPreview.removeAttribute("src");
   photoPlaceholder.hidden = false;
