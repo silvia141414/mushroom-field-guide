@@ -604,30 +604,49 @@ function summarizeWeatherHistory(history) {
   const days = history.map((day) => {
     const maxTemp = Number(day.maxTemp);
     const minTemp = Number(day.minTemp);
+
     const precipitation =
       Number(day.precipitation) || 0;
 
-    const averageTemp =
-      Number.isFinite(maxTemp) &&
+    const validMaxTemp =
+      Number.isFinite(maxTemp)
+        ? maxTemp
+        : null;
+
+    const validMinTemp =
       Number.isFinite(minTemp)
-        ? (maxTemp + minTemp) / 2
+        ? minTemp
+        : null;
+
+    const averageTemp =
+      validMaxTemp !== null &&
+      validMinTemp !== null
+        ? (validMaxTemp + validMinTemp) / 2
         : null;
 
     return {
       precipitation,
+      maxTemp: validMaxTemp,
+      minTemp: validMinTemp,
       averageTemp
     };
   });
 
+
+  // 14日間の総雨量
   const rainTotal = days.reduce(
     (sum, day) => sum + day.precipitation,
     0
   );
 
+
+  // 0.5mm以上降った日数
   const rainDays = days.filter(
     (day) => day.precipitation >= 0.5
   ).length;
 
+
+  // 直近5日の雨量
   const recent5Rain = days
     .slice(-5)
     .reduce(
@@ -635,6 +654,8 @@ function summarizeWeatherHistory(history) {
       0
     );
 
+
+  // 14日平均気温
   const validTemps = days
     .map((day) => day.averageTemp)
     .filter(Number.isFinite);
@@ -647,11 +668,59 @@ function summarizeWeatherHistory(history) {
         ) / validTemps.length
       : null;
 
+
+  // 14日平均の最高気温
+  const validMaxTemps = days
+    .map((day) => day.maxTemp)
+    .filter(Number.isFinite);
+
+  const averageMaxTemp =
+    validMaxTemps.length > 0
+      ? validMaxTemps.reduce(
+          (sum, temp) => sum + temp,
+          0
+        ) / validMaxTemps.length
+      : null;
+
+
+  // 14日平均の最低気温
+  const validMinTemps = days
+    .map((day) => day.minTemp)
+    .filter(Number.isFinite);
+
+  const averageMinTemp =
+    validMinTemps.length > 0
+      ? validMinTemps.reduce(
+          (sum, temp) => sum + temp,
+          0
+        ) / validMinTemps.length
+      : null;
+
+
+  // 直近5日の平均気温
+  const recent5Temps = days
+    .slice(-5)
+    .map((day) => day.averageTemp)
+    .filter(Number.isFinite);
+
+  const recent5AverageTemp =
+    recent5Temps.length > 0
+      ? recent5Temps.reduce(
+          (sum, temp) => sum + temp,
+          0
+        ) / recent5Temps.length
+      : null;
+
+
   return {
     rainTotal,
     rainDays,
     recent5Rain,
-    averageTemp
+
+    averageTemp,
+    averageMaxTemp,
+    averageMinTemp,
+    recent5AverageTemp
   };
 }
 
@@ -739,20 +808,62 @@ function compareMushroomConditions({
   pastLatitude,
   pastLongitude
 }) {
-  const tempDifference =
-    currentWeather.averageTemp !== null &&
-    pastWeather.averageTemp !== null
-      ? Math.abs(
-          currentWeather.averageTemp -
-          pastWeather.averageTemp
-        )
-      : 8;
+  const tempDelta =
+  currentWeather.averageTemp !== null &&
+  pastWeather.averageTemp !== null
+    ? currentWeather.averageTemp -
+      pastWeather.averageTemp
+    : null;
 
-  const rainDifference =
-    Math.abs(
-      currentWeather.rainTotal -
-      pastWeather.rainTotal
-    );
+const tempDifference =
+  tempDelta !== null
+    ? Math.abs(tempDelta)
+    : 8;
+
+    const maxTempDelta =
+  currentWeather.averageMaxTemp != null &&
+  pastWeather.averageMaxTemp != null
+    ? currentWeather.averageMaxTemp -
+      pastWeather.averageMaxTemp
+    : null;
+
+const maxTempDifference =
+  maxTempDelta !== null
+    ? Math.abs(maxTempDelta)
+    : 8;
+
+
+const minTempDelta =
+  currentWeather.averageMinTemp != null &&
+  pastWeather.averageMinTemp != null
+    ? currentWeather.averageMinTemp -
+      pastWeather.averageMinTemp
+    : null;
+
+const minTempDifference =
+  minTempDelta !== null
+    ? Math.abs(minTempDelta)
+    : 8;
+
+
+const recentTempDelta =
+  currentWeather.recent5AverageTemp != null &&
+  pastWeather.recent5AverageTemp != null
+    ? currentWeather.recent5AverageTemp -
+      pastWeather.recent5AverageTemp
+    : null;
+
+const recentTempDifference =
+  recentTempDelta !== null
+    ? Math.abs(recentTempDelta)
+    : 8;
+
+const rainDelta =
+  currentWeather.rainTotal -
+  pastWeather.rainTotal;
+
+const rainDifference =
+  Math.abs(rainDelta);
 
   const recentRainDifference =
     Math.abs(
@@ -781,9 +892,24 @@ function compareMushroomConditions({
     );
 
   const tempScore =
-    clampScore(
-      1 - tempDifference / 8
-    );
+  clampScore(
+    1 - tempDifference / 5
+  );
+
+const maxTempScore =
+  clampScore(
+    1 - maxTempDifference / 5
+  );
+
+const minTempScore =
+  clampScore(
+    1 - minTempDifference / 4
+  );
+
+const recentTempScore =
+  clampScore(
+    1 - recentTempDifference / 4
+  );
 
   const rainScore =
     clampScore(
@@ -811,23 +937,39 @@ function compareMushroomConditions({
     );
 
   const similarity =
-    (
-      tempScore * 0.25 +
-      rainScore * 0.20 +
-      recentRainScore * 0.20 +
-      rainDaysScore * 0.10 +
-      seasonScore * 0.15 +
-      distanceScore * 0.10
-    ) * 100;
+  (
+    tempScore * 0.10 +
+    maxTempScore * 0.10 +
+    minTempScore * 0.15 +
+    recentTempScore * 0.20 +
+
+    rainScore * 0.10 +
+    recentRainScore * 0.10 +
+    rainDaysScore * 0.05 +
+
+    seasonScore * 0.15 +
+    distanceScore * 0.05
+  ) * 100;
 
   return {
-    similarity: Math.round(similarity),
-    distanceKm,
-    tempDifference,
-    rainDifference,
-    recentRainDifference,
-    seasonDifference
-  };
+  similarity: Math.round(similarity),
+  distanceKm,
+
+  tempDifference,
+  tempDelta,
+
+  minTempDifference,
+  minTempDelta,
+
+  recentTempDifference,
+  recentTempDelta,
+
+  rainDifference,
+  rainDelta,
+
+  recentRainDifference,
+  seasonDifference
+};
 }
 
 document.getElementById("getWeatherBtn").addEventListener("click", async (event) => {
@@ -1018,10 +1160,21 @@ document
             : null;
 
         return {
-          date,
-          precipitation,
-          averageTemp
-        };
+  date,
+  precipitation,
+
+  maxTemp:
+    Number.isFinite(max)
+      ? max
+      : null,
+
+  minTemp:
+    Number.isFinite(min)
+      ? min
+      : null,
+
+  averageTemp
+};
       });
 
       const rainTotal = weatherDays.reduce(
@@ -1253,11 +1406,57 @@ predictionList.innerHTML = `
   </p>
 `;
 
+// 14日平均の最高気温
+const predictionMaxTemps = weatherDays
+  .map((day) => day.maxTemp)
+  .filter(Number.isFinite);
+
+const averageMaxTemp =
+  predictionMaxTemps.length > 0
+    ? predictionMaxTemps.reduce(
+        (sum, temp) => sum + temp,
+        0
+      ) / predictionMaxTemps.length
+    : null;
+
+
+// 14日平均の最低気温
+const predictionMinTemps = weatherDays
+  .map((day) => day.minTemp)
+  .filter(Number.isFinite);
+
+const averageMinTemp =
+  predictionMinTemps.length > 0
+    ? predictionMinTemps.reduce(
+        (sum, temp) => sum + temp,
+        0
+      ) / predictionMinTemps.length
+    : null;
+
+
+// 直近5日の平均気温
+const predictionRecent5Temps = weatherDays
+  .slice(-5)
+  .map((day) => day.averageTemp)
+  .filter(Number.isFinite);
+
+const recent5AverageTemp =
+  predictionRecent5Temps.length > 0
+    ? predictionRecent5Temps.reduce(
+        (sum, temp) => sum + temp,
+        0
+      ) / predictionRecent5Temps.length
+    : null;
+
 const currentWeatherSummary = {
   rainTotal,
   rainDays,
   recent5Rain,
-  averageTemp
+
+  averageTemp,
+  averageMaxTemp,
+  averageMinTemp,
+  recent5AverageTemp
 };
 
 const currentDate =
@@ -1310,47 +1509,139 @@ observations.forEach((observation) => {
       return;
     }
 
-    candidates.push({
-      name: record.name,
-      similarity: comparison.similarity,
-      date: observation.date,
-      place: observation.place || "場所不明",
-      distanceKm: comparison.distanceKm,
-      tempDifference:
-        comparison.tempDifference,
-      rainDifference:
-        comparison.rainDifference
-    });
+    const sameLocation =
+  (
+    observation.locationId &&
+    String(observation.locationId) ===
+      String(location.id)
+  ) ||
+  comparison.distanceKm <= 0.5;
+
+candidates.push({
+  name: record.name,
+  observationId: observation.id,
+
+  similarity: comparison.similarity,
+
+  sameLocation,
+
+  date: observation.date,
+  place: observation.place || "場所不明",
+
+  distanceKm: comparison.distanceKm,
+
+  tempDifference:
+  comparison.tempDifference,
+
+tempDelta:
+  comparison.tempDelta,
+
+minTempDelta:
+  comparison.minTempDelta,
+
+recentTempDelta:
+  comparison.recentTempDelta,
+
+rainDifference:
+  comparison.rainDifference,
+
+rainDelta:
+  comparison.rainDelta
+});
   });
 });
 
 
-// 同じ種類を複数回見つけている場合は
-// いちばん今の条件に近かった記録を採用
+// ==================================================
+// 同じ種類を何回発見しているか数える
+// 同じ観察記録内の重複は1回として数える
+// ==================================================
+const speciesObservationCounts =
+  new Map();
+
+candidates.forEach((candidate) => {
+  if (
+    !speciesObservationCounts.has(
+      candidate.name
+    )
+  ) {
+    speciesObservationCounts.set(
+      candidate.name,
+      new Set()
+    );
+  }
+
+  speciesObservationCounts
+    .get(candidate.name)
+    .add(String(candidate.observationId));
+});
+
+
+// ==================================================
+// 基本の天候類似度に
+// ・同じ場所での発見実績
+// ・過去の発見回数
+// を加えて期待スコアを作る
+// ==================================================
 const bestBySpecies = new Map();
 
 candidates.forEach((candidate) => {
+  const sightings =
+    speciesObservationCounts.get(
+      candidate.name
+    )?.size || 1;
+
+  // 同じ場所なら +12
+  const sameLocationBonus =
+    candidate.sameLocation
+      ? 12
+      : 0;
+
+  // 2回目以降、1回につき +2
+  // 最大 +8
+  const repeatBonus =
+    Math.min(
+      8,
+      Math.max(0, sightings - 1) * 2
+    );
+
+  const score =
+    Math.min(
+      100,
+      candidate.similarity +
+        sameLocationBonus +
+        repeatBonus
+    );
+
+  const enrichedCandidate = {
+    ...candidate,
+    sightings,
+    sameLocationBonus,
+    repeatBonus,
+    score
+  };
+
   const existing =
     bestBySpecies.get(candidate.name);
 
   if (
     !existing ||
-    candidate.similarity >
-      existing.similarity
+    enrichedCandidate.score >
+      existing.score
   ) {
     bestBySpecies.set(
       candidate.name,
-      candidate
+      enrichedCandidate
     );
   }
 });
+
 
 const predictions =
   [...bestBySpecies.values()]
     .sort(
       (a, b) =>
-        b.similarity -
-        a.similarity
+        b.score - a.score
     )
     .slice(0, 5);
 
@@ -1380,18 +1671,49 @@ if (!predictions.length) {
               </span>
 
               <span class="prediction-score">
-                類似度 ${item.similarity}%
-              </span>
+  期待スコア ${item.score}%
+</span>
             </div>
 
-            <p class="prediction-reason">
-              ${escapeHTML(item.date)}
-              ・${escapeHTML(item.place)}
-              で発見した時の条件と比較
-              ／ 距離 ${distanceText}
-              ／ 気温差 ${item.tempDifference.toFixed(1)}℃
-              ／ 14日雨量差 ${item.rainDifference.toFixed(1)}mm
-            </p>
+           <p class="prediction-reason">
+  条件類似度 ${item.similarity}%
+  ／ ${escapeHTML(item.date)}
+  ・${escapeHTML(item.place)}
+  ／ 距離 ${distanceText}
+ ／ 平均気温差 ${
+  item.tempDelta === null
+    ? "--"
+    : `${item.tempDelta > 0 ? "+" : ""}${item.tempDelta.toFixed(1)}℃`
+}
+
+／ 最低気温差 ${
+  item.minTempDelta === null
+    ? "--"
+    : `${item.minTempDelta > 0 ? "+" : ""}${item.minTempDelta.toFixed(1)}℃`
+}
+
+／ 直近5日 ${
+  item.recentTempDelta === null
+    ? "--"
+    : `${item.recentTempDelta > 0 ? "+" : ""}${item.recentTempDelta.toFixed(1)}℃`
+}
+
+／ 14日雨量差 ${
+  `${item.rainDelta > 0 ? "+" : ""}${item.rainDelta.toFixed(1)}mm`
+}
+
+  ${
+    item.sameLocation
+      ? "<br>⭐ この場所周辺で過去に発見あり"
+      : ""
+  }
+
+  ${
+    item.sightings >= 2
+      ? `<br>🍄 過去${item.sightings}回の発見記録あり`
+      : ""
+  }
+</p>
           </div>
         `;
       })
