@@ -13,6 +13,7 @@ let currentWeatherFetchedAt = null;
 let pendingPhoto = "";
 let pendingPhotos = [];
 let editingRecordId = null; 
+let libraryMode = "records";
 
 const views = [...document.querySelectorAll(".view")];
 const navButtons = [...document.querySelectorAll(".nav-btn")];
@@ -95,8 +96,122 @@ function switchView(id) {
   if (id === "homeView" || id === "libraryView") renderAll();
 }
 
-navButtons.forEach(btn => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+navButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+
+    if (btn.dataset.view === "libraryView") {
+      libraryMode = "records";
+    }
+
+    switchView(btn.dataset.view);
+  });
+});
 document.getElementById("goLibraryBtn").addEventListener("click", () => switchView("libraryView"));
+// ==================================================
+// ホーム上部の3つの数字をクリックできるようにする
+// ==================================================
+
+const speciesStatCard = speciesCount.parentElement;
+const recordStatCard = recordCount.parentElement;
+const unknownStatCard = unknownCount.parentElement;
+
+[
+  speciesStatCard,
+  recordStatCard,
+  unknownStatCard
+].forEach((card) => {
+  if (card) {
+    card.classList.add("clickable-stat");
+  }
+});
+
+function clearLibraryConditions() {
+  currentLocationFilterId = null;
+
+  searchInput.value = "";
+
+  // 絞り込みを先頭の「すべて」に戻す
+  filterInput.selectedIndex = 0;
+
+  const locationButton =
+    document.getElementById("showLocationListBtn");
+
+  const clearLocationButton =
+    document.getElementById("clearLocationFilterBtn");
+
+  if (locationButton) {
+    locationButton.textContent = "📍 場所から見る";
+  }
+
+  if (clearLocationButton) {
+    clearLocationButton.hidden = true;
+  }
+}
+
+
+// ------------------------------
+// 発見した種類
+// ------------------------------
+
+if (speciesStatCard) {
+  speciesStatCard.addEventListener("click", () => {
+    clearLibraryConditions();
+
+    libraryMode = "species";
+
+    switchView("libraryView");
+  });
+}
+
+
+// ------------------------------
+// 発見記録
+// ------------------------------
+
+if (recordStatCard) {
+  recordStatCard.addEventListener("click", () => {
+    clearLibraryConditions();
+
+    libraryMode = "records";
+
+    switchView("libraryView");
+  });
+}
+
+
+// ------------------------------
+// 未同定
+// ------------------------------
+
+if (unknownStatCard) {
+  unknownStatCard.addEventListener("click", () => {
+    clearLibraryConditions();
+
+    libraryMode = "records";
+
+    filterInput.value = "unknown";
+
+    switchView("libraryView");
+  });
+}
+
+if (unknownStatCard) {
+  unknownStatCard.classList.add("clickable-stat");
+
+  unknownStatCard.addEventListener("click", () => {
+    // 場所検索などが残っていたら解除
+    currentLocationFilterId = null;
+
+    // 検索文字も解除
+    searchInput.value = "";
+
+    // 図鑑の既存フィルターを「未同定」にする
+    filterInput.value = "unknown";
+
+    // 図鑑へ移動
+    switchView("libraryView");
+  });
+}
 document.getElementById("getLocationBtn").addEventListener("click", (event) => {
   event.preventDefault();
 
@@ -1737,47 +1852,104 @@ document.getElementById("addMushroomBtn").addEventListener("click", () => {
   const area = document.getElementById("extraMushrooms");
 
   area.insertAdjacentHTML("beforeend", `
-  <div class="form-card extra-mushroom">
-    <h2>追加キノコ 🍄</h2>
-    <label class="photo-picker">
-      <input class="extra-photo" type="file" accept="image/*"multiple>
-      <span>📷 写真を追加</span>
+    <div class="form-card extra-mushroom">
+      <h2>追加キノコ 🍄</h2>
+
+      <label class="photo-picker">
+        <input class="extra-photo" type="file" accept="image/*" multiple>
+        <span>📷 写真を追加</span>
       </label>
 
-    <label>
-      名前
-      <input class="extra-name" type="text" placeholder="例：タマゴタケ / 未同定">
-    </label>
+      <div
+        class="extra-photo-preview"
+        style="
+          display:grid;
+          grid-template-columns:repeat(auto-fill,minmax(90px,1fr));
+          gap:8px;
+          margin-top:8px;
+        "
+      ></div>
 
-    <div class="two-col">
       <label>
-        成長段階
-        <select class="extra-stage">
-          <option value="不明">不明</option>
-          <option value="幼菌">幼菌</option>
-          <option value="成菌">成菌</option>
-          <option value="老菌">老菌</option>
-        </select>
+        名前
+        <input
+          class="extra-name"
+          type="text"
+          placeholder="例：タマゴタケ / 未同定"
+        >
       </label>
 
+      <div class="two-col">
+        <label>
+          成長段階
+          <select class="extra-stage">
+            <option value="不明">不明</option>
+            <option value="幼菌">幼菌</option>
+            <option value="成菌">成菌</option>
+            <option value="老菌">老菌</option>
+          </select>
+        </label>
+
+        <label>
+          判定
+          <select class="extra-category">
+            <option value="不明">不明</option>
+            <option value="食用">食用</option>
+            <option value="毒">毒</option>
+            <option value="要注意">要注意</option>
+          </select>
+        </label>
+      </div>
+
       <label>
-        判定
-        <select class="extra-category">
-          <option value="不明">不明</option>
-          <option value="食用">食用</option>
-          <option value="毒">毒</option>
-          <option value="要注意">要注意</option>
-        </select>
+        メモ
+        <textarea
+          class="extra-memo"
+          rows="3"
+          placeholder="特徴など"
+        ></textarea>
       </label>
     </div>
+  `);
 
-    <label>
-      メモ
-      <textarea class="extra-memo" rows="3" placeholder="特徴など"></textarea>
-    </label>
-  </div>
-`);
+  const mushroomCard = area.lastElementChild;
+
+  const extraPhotoInput =
+    mushroomCard.querySelector(".extra-photo");
+
+  const extraPhotoPreview =
+    mushroomCard.querySelector(".extra-photo-preview");
+
+  extraPhotoInput.addEventListener("change", () => {
+    const files = [...(extraPhotoInput.files || [])];
+
+    extraPhotoPreview.innerHTML = "";
+
+    files.forEach((file, index) => {
+      const previewUrl = URL.createObjectURL(file);
+
+      const img = document.createElement("img");
+
+      img.src = previewUrl;
+      img.alt = `追加キノコ写真 ${index + 1}`;
+
+      img.style.width = "100%";
+      img.style.aspectRatio = "1 / 1";
+      img.style.objectFit = "cover";
+      img.style.borderRadius = "10px";
+
+      img.addEventListener(
+        "load",
+        () => {
+          URL.revokeObjectURL(previewUrl);
+        },
+        { once: true }
+      );
+
+      extraPhotoPreview.appendChild(img);
+    });
   });
+});
 
 
 photoInput.addEventListener("change", async (event) => {
@@ -2297,7 +2469,7 @@ if (
   const storedPhotos = await uploadPhotosToStorage(pendingPhotos);
 const storedPhoto = storedPhotos[0] || "";
   const record = {
-    id: crypto.randomUSSSSUID ? crypto.randomUUID() : String(Date.now()),
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
     observationId: observationId,
     name,
     stage: document.getElementById("stageInput").value,
@@ -2312,35 +2484,89 @@ photos: storedPhotos,
 
   records.unshift(record);
 
-  const extraMushrooms = document.querySelectorAll(".extra-mushroom");
+  const extraMushrooms = [
+  ...document.querySelectorAll(".extra-mushroom")
+];
 
-  for (let index = 0; index < extraMushrooms.length; index++) {
+for (let index = 0; index < extraMushrooms.length; index++) {
   const mushroom = extraMushrooms[index];
 
-  const photoInput = mushroom.querySelector(".extra-photo");
-  const photoFiles = [...(photoInput.files || [])];
-const extraPhotoDataUrls = [];
+  const nameValue =
+    mushroom.querySelector(".extra-name").value.trim();
 
-for (const photoFile of photoFiles) {
-  const compressedPhoto = await compressImage(photoFile, 1200, 0.78);
-  extraPhotoDataUrls.push(compressedPhoto);
-}
+  const stageValue =
+    mushroom.querySelector(".extra-stage").value;
 
-const storedExtraPhotos =
-  await uploadPhotosToStorage(extraPhotoDataUrls);
+  const categoryValue =
+    mushroom.querySelector(".extra-category").value;
 
-const storedExtraPhoto = storedExtraPhotos[0] || "";
+  const memoValue =
+    mushroom.querySelector(".extra-memo").value.trim();
 
-const extraRecord = {
-    id: String(Date.now() + index + 1),
+  const extraPhotoInput =
+    mushroom.querySelector(".extra-photo");
+
+  const photoFiles = [
+    ...(extraPhotoInput.files || [])
+  ];
+
+  // 完全に空の追加キノコ欄は保存しない
+  const hasInput =
+    nameValue !== "" ||
+    memoValue !== "" ||
+    photoFiles.length > 0 ||
+    stageValue !== "不明" ||
+    categoryValue !== "不明";
+
+  if (!hasInput) {
+    continue;
+  }
+
+  const extraPhotoDataUrls = [];
+
+  for (const photoFile of photoFiles) {
+    const compressedPhoto =
+      await compressImage(
+        photoFile,
+        1200,
+        0.78
+      );
+
+    extraPhotoDataUrls.push(compressedPhoto);
+  }
+
+  const storedExtraPhotos =
+    await uploadPhotosToStorage(
+      extraPhotoDataUrls
+    );
+
+  const storedExtraPhoto =
+    storedExtraPhotos[0] || "";
+
+  const extraRecord = {
+    id: crypto.randomUUID
+      ? crypto.randomUUID()
+      : String(Date.now() + index + 1),
+
     observationId: observationId,
-    name: mushroom.querySelector(".extra-name").value.trim() || "未同定",
-    stage: mushroom.querySelector(".extra-stage").value,
-    category: mushroom.querySelector(".extra-category").value,
-    date: document.getElementById("dateInput").value, 
-    place: document.getElementById("placeInput").value.trim(),
-    memo: mushroom.querySelector(".extra-memo").value.trim(),
-    photo: storedExtraPhotos,
+
+    name: nameValue || "未同定",
+    stage: stageValue,
+    category: categoryValue,
+
+    date:
+      document.getElementById("dateInput").value,
+
+    place:
+      document.getElementById("placeInput")
+        .value
+        .trim(),
+
+    memo: memoValue,
+
+    photo: storedExtraPhoto,
+    photos: storedExtraPhotos,
+
     createdAt: new Date().toISOString()
   };
 
@@ -2353,6 +2579,8 @@ const extraRecord = {
   await syncToCloud();
 
   recordForm.reset();
+
+  document.getElementById("extraMushrooms").innerHTML = "";
   currentLocationId = null;
 currentLatitude = null;
 currentLongitude = null;
@@ -2419,6 +2647,95 @@ function renderRecent() {
 }
 
 function renderLibrary() {
+    // ==================================================
+  // 種類一覧モード
+  // ==================================================
+  if (libraryMode === "species") {
+    const q =
+      searchInput.value.trim().toLowerCase();
+
+    const speciesMap = new Map();
+
+    records.forEach((record) => {
+      const name =
+        String(record.name || "").trim();
+
+      // 未同定は種類数には含めない
+      if (!name || name === "未同定") {
+        return;
+      }
+
+      if (
+        q &&
+        !name.toLowerCase().includes(q)
+      ) {
+        return;
+      }
+
+      if (!speciesMap.has(name)) {
+        speciesMap.set(name, []);
+      }
+
+      speciesMap.get(name).push(record);
+    });
+
+    const speciesList =
+      [...speciesMap.entries()]
+        .sort((a, b) =>
+          a[0].localeCompare(
+            b[0],
+            "ja"
+          )
+        );
+
+    libraryCount.textContent =
+      `${speciesList.length}種`;
+
+    if (!speciesList.length) {
+      libraryList.className =
+        "grid-list empty-state";
+
+      libraryList.textContent =
+        "条件に合う種類がありません。";
+
+      return;
+    }
+
+    libraryList.className = "grid-list";
+
+    libraryList.innerHTML =
+      speciesList
+        .map(([name, speciesRecords]) => {
+          return speciesCardHTML(
+            name,
+            speciesRecords
+          );
+        })
+        .join("");
+
+    libraryList
+      .querySelectorAll("[data-species-name]")
+      .forEach((button) => {
+        button.addEventListener(
+          "click",
+          () => {
+            const speciesName =
+              button.dataset.speciesName;
+
+            libraryMode = "records";
+
+            searchInput.value =
+              speciesName;
+
+            filterInput.selectedIndex = 0;
+
+            renderLibrary();
+          }
+        );
+      });
+
+    return;
+  }
   const q = searchInput.value.trim().toLowerCase();
   const f = filterInput.value;
   const locationObservationIds = currentLocationFilterId
@@ -2758,6 +3075,67 @@ showLocationListBtn.addEventListener("click", () => {
     renderLocationBrowser();
   }
 });
+
+
+ function speciesCardHTML(name, speciesRecords) {
+  const sortedRecords =
+    [...speciesRecords].sort((a, b) =>
+      String(b.date || "").localeCompare(
+        String(a.date || "")
+      )
+    );
+
+  const latest = sortedRecords[0];
+
+  const safeName = escapeHTML(name);
+
+  const media =
+    latest?.photo
+      ? `
+        <img
+          class="card-photo"
+          src="${latest.photo}"
+          alt="${safeName}"
+        >
+      `
+      : `
+        <div
+          class="card-placeholder"
+          aria-hidden="true"
+        >
+          🍄
+        </div>
+      `;
+
+  const latestDate =
+    latest?.date || "日付不明";
+
+  return `
+    <article class="mushroom-card">
+      <button
+        type="button"
+        data-species-name="${safeName}"
+        aria-label="${safeName}の記録を見る"
+      >
+        ${media}
+
+        <div class="card-body">
+          <div class="card-title">
+            <strong>${safeName}</strong>
+
+            <span class="badge">
+              ${speciesRecords.length}件
+            </span>
+          </div>
+
+          <div class="card-meta">
+            最新発見：${escapeHTML(latestDate)}
+          </div>
+        </div>
+      </button>
+    </article>
+  `;
+} 
 
 function cardHTML(r) {
   const safeName = escapeHTML(r.name);
